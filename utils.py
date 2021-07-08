@@ -1,4 +1,5 @@
-from typing import List, Tuple, Dict
+from pathlib import Path
+from typing import DefaultDict, List, Tuple, Dict
 from PIL import Image
 import OpenEXR
 import Imath
@@ -7,44 +8,69 @@ import OpenEXR
 import Imath
 from PIL import Image
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
-
+from skimage.measure import label, regionprops
+from scipy import ndimage
 FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
 
 from pydantic import BaseModel
 
-@dataclass(frozen=False)
-class Keypoints():
-    LEFT_SHOE_FRONT: int = 12
-    LEFT_SHOE_BACK: int = 7
-    LEFT_SHOE_INNER_SIDE: int =11
-    LEFT_SHOE_OUTER_SIDE: int =9
-    LEFT_SHOE_TOP: int =10
-    LEFT_SHOE_ANKLE: int =8
-    RIGHT_SHOE_FRONT: int =1
-    RIGHT_SHOE_BACK: int =5
-    RIGHT_SHOE_INNER_SIDE: int =4
-    RIGHT_SHOE_OUTER_SIDE: int =3
-    RIGHT_SHOE_TOP: int =2
-    RIGHT_SHOE_ANKLE: int =6
-    LEFT_SHOE: int =15
-    RIGHT_SHOE: int =14
-    BODY: int =13
-
-    @staticmethod
-    def labels()->List[str]:
-        # TODO: make it better
-        labels = list(Keypoints.__dataclass_fields__.keys())
-        labels.sort()
-        return labels
-
+# @dataclass(frozen=False)
+# class Keypoints():
+#     RIGHT_SHOE_FRONT: int =1
+#     RIGHT_SHOE_TOP: int =2
+#     RIGHT_SHOE_OUTER_SIDE: int =3
+#     RIGHT_SHOE_INNER_SIDE: int =4
+#     RIGHT_SHOE_BACK: int =5
+#     RIGHT_SHOE_ANKLE: int =6
+#     LEFT_SHOE_BACK: int = 7
+#     LEFT_SHOE_ANKLE: int =8
+#     LEFT_SHOE_OUTER_SIDE: int =9
+#     LEFT_SHOE_TOP: int =10
+#     LEFT_SHOE_INNER_SIDE: int =11
+#     LEFT_SHOE_FRONT: int = 12
+#     BODY: int =13
+#     RIGHT_SHOE: int =14
+#     LEFT_SHOE: int =15
+#     lookup: Dict = field(default_factory=lambda:{
+#     1: "RIGHT_SHOE_FRONT",
+#     2: "RIGHT_SHOE_TOP",
+#     3: "RIGHT_SHOE_OUTER_SIDE",
+#     4: "RIGHT_SHOE_INNER_SIDE",
+#     5: "RIGHT_SHOE_BACK",
+#     6: "RIGHT_SHOE_ANKLE",
+#     7:"LEFT_SHOE_BACK",
+#     8:"LEFT_SHOE_ANKLE",
+#     9:"LEFT_SHOE_OUTER_SIDE",
+#     10:"LEFT_SHOE_TOP",
+#     11:"LEFT_SHOE_INNER_SIDE",
+#     12:"LEFT_SHOE_FRONT",
+#     13:"BODY",
+#     14:"RIGHT_SHOE",
+#     15:"LEFT_SHOE"
+#     })
+#     @staticmethod
+#     def labels()->List[str]:
+#         # TODO: make it better
+#         labels = list(Keypoints.__dataclass_fields__.keys())
+#         labels.sort()
+#         return labels
+#     @staticmethod
+#     def parts():
+#         return (Keypoints.BODY, Keypoints.LEFT_SHOE, Keypoints.RIGHT_SHOE)
+from collections import namedtuple
+KeypointInfo = namedtuple("KeypointInfo", ["RIGHT_SHOE_FRONT","RIGHT_SHOE_TOP", "RIGHT_SHOE_OUTER_SIDE", "RIGHT_SHOE_INNER_SIDE", "RIGHT_SHOE_BACK", "RIGHT_SHOE_ANKLE","LEFT_SHOE_BACK","LEFT_SHOE_ANKLE","LEFT_SHOE_OUTER_SIDE","LEFT_SHOE_TOP","LEFT_SHOE_INNER_SIDE","LEFT_SHOE_FRONT","BODY","RIGHT_SHOE","LEFT_SHOE"], defaults=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+Keypoints = KeypointInfo()
 class MetaData(BaseModel):
     source: Dict[str, str]
     keypoints: List[Tuple[int, int]]
-    keypoint_labels: List[str] = Keypoints.labels()
-    visible: List[bool] = [False]*len(Keypoints.labels())
+    keypoint_labels: List[str] = Keypoints._fields
+    visible: List[bool] = [False]*len(Keypoints._fields)
     bounding_boxes: Dict[str, Tuple[int, int, int,int]]
+
+
+
 
 
 # {
@@ -69,58 +95,21 @@ class MetaData(BaseModel):
 #     }
 # }
 
+def exr_channel_to_np(exr_file_discriptor: OpenEXR.InputFile, size:Tuple[int, int, int], channel_name:str)->List[np.array]:
 
-
-
-
-
-def encode_to_srgb(x):
-    """
-    https://en.wikipedia.org/wiki/SRGB
-    """
-    a = 0.055
-    return numpy.where(x <= 0.0031308,
-                       x * 12.92,
-                       (1 + a) * pow(x, 1 / 2.4) - a)
-
-def exr_to_srgb(exrfile):
-    array, header = exr_to_array(exrfile)
-    result = encode_to_srgb(array) * 255.
-    present_channels = ["R", "G", "B", "A"][:result.shape[2]]
-    channels = "".join(present_channels)
-    return Image.fromarray(result.astype('uint8'), channels), header
-
-def exr_to_array(exrfile):
-    file = OpenEXR.InputFile(exrfile)
-    dw = file.header()['dataWindow']
-
-    channels = file.header()['channels'].keys()
-    channels_list = list()
-    for c in ('R', 'G', 'B', 'A'):
-        if c in channels:
-            channels_list.append(c)
-
-    size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
-    color_channels = file.channels(channels_list, FLOAT)
-    channels_tuple = [numpy.frombuffer(channel, dtype='f') for channel in color_channels]
-    res = numpy.dstack(channels_tuple)
-    return res.reshape(size + (len(channels_tuple),)), file.header()
-from pathlib import Path
-def exr_channel_to_np(exr_file_discriptor: OpenEXR.InputFile, size:Tuple[int, int, int], channel:str)->List[np.array]:
-    '''
-    See:
-    https://excamera.com/articles/26/doc/intro.html
-    http://www.tobias-weis.de/groundtruth-data-for-computer-vision-with-blender/
-    '''
-
-    channel_str = exr_file_discriptor.channel(channel, FLOAT)
+    channel_str = exr_file_discriptor.channel(channel_name, FLOAT)
 
     channel = np.frombuffer(channel_str, dtype = np.float32).reshape(size[1],-1)
 
     return channel
+# Old not correct
+# def EncodeToSRGB(v):
+#     return(np.where(v<=0.0031308,v * 12.92, 1.055*(v**(1.0/2.4)) - 0.055))
+
 
 def EncodeToSRGB(v):
-    return(np.where(v<=0.0031308,v * 12.92, 1.055*(v**(1.0/2.4)) - 0.055))
+    return np.where(v <= 0.0031308, (v * 12.92) * 255, (1.055 * (v ** (1.0 / 2.4)) - 0.055) * 255)
+
 
 def exr2rgb(exr_path):
     exr_file_discriptor = OpenEXR.InputFile(exr_path)
@@ -132,11 +121,29 @@ def exr2rgb(exr_path):
         channel  = exr_channel_to_np(exr_file_discriptor, size, channel_name)
         channels.append(EncodeToSRGB(channel))
     return np.dstack(channels), exr_file_discriptor.header()
+from collections import defaultdict
 
-def mask_to_meta(mask):
+def mask_to_bounding_boxes(mask):
+    bounding_boxes = defaultdict(tuple)
+    props = [o for o in regionprops(mask.astype('int')) if o.label in Keypoints]
+    for prop in props:
+        bounding_boxes[Keypoints._fields[prop.label-1]] = prop.bbox
+    return bounding_boxes
+
+def mask_to_keypoints(mask)->Tuple[List[Tuple[int, int]], List[bool]]:
     keypoints = []
-    for kp_name in Keypoints.labels():
-        keypoints.append(ndimage.measurements.center_of_mass((mask == Keypoints.LEFT_SHOE).astype('int')))
-        
+    visible = []
+    for kp_number in Keypoints:
+        kp = ndimage.measurements.center_of_mass((mask == kp_number).astype('int'))
+        visible.append(not any([np.isnan(o) for o in kp]))
+        if any([np.isnan(o) for o in kp]):
+            kp=(0,0)
+        keypoints.append(kp)
 
-    meta = MetaData()
+
+    return [(int(o[0]), int(o[1])) for o in keypoints], visible
+
+import json
+def read_meta(file_path:Path):
+    with open(file_path, mode='r') as fp:
+        MetaData(json.load(fp))
