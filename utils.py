@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import BaseModel
 from scipy import ndimage
 from skimage.measure import regionprops
+from torch.autograd.grad_mode import F
 from torchvision import transforms as T
 from torchvision import utils
 from torchvision.transforms import ToTensor
@@ -64,7 +65,7 @@ Keypoints = KeypointInfo()
 
 class MetaData(BaseModel):
     source: Dict[str, str]
-    keypoints: List[Tuple[int, int]]
+    keypoints: List[Tuple[int, int]] # x,y
     keypoint_labels: List[str] = Keypoints._fields
     visible: List[bool] = [False] * len(Keypoints._fields)
     bounding_boxes: Dict[str, Tuple[int, int, int, int]]  #  (xmin, ymin, xmax, ymax)
@@ -110,8 +111,11 @@ def mask_to_keypoints(mask) -> Tuple[List[Tuple[int, int]], List[bool]]:
     present_keypoints_in_mask = np.unique(mask).astype("int")
     for kp_number in Keypoints:
         if not kp_number in present_keypoints_in_mask:
+            keypoints.append((0,0))
+            visible.append(False)
             continue
-        kp = ndimage.measurements.center_of_mass((mask == kp_number))
+        y,x = ndimage.measurements.center_of_mass((mask == kp_number))
+        kp = (x,y)
         visible.append(not any([np.isnan(o) for o in kp]))
         if any([np.isnan(o) for o in kp]):
             kp = (0, 0)
@@ -126,26 +130,30 @@ def read_meta(file_path: Path):
 
 
 def draw_bounding_box(image, bounding_boxes: Dict):
-    image_t = image_to_tensor(image)
+    if not isinstance(image, torch.Tensor):
+        image = image_to_tensor(image)
     bboxes = torch.tensor([bbox for bbox in bounding_boxes.values()], dtype=torch.float)
     labels = list(bounding_boxes.keys())
     colors = [COLORS[o.lower()] for o in bounding_boxes.keys()]
-    image_t = utils.draw_bounding_boxes(
-        image_t.type(torch.uint8), bboxes, labels=labels, colors=colors
+    image = utils.draw_bounding_boxes(
+        image.type(torch.uint8), bboxes, labels=labels, colors=colors
     )
-    return PIL.Image.fromarray(image_t.permute(1, 2, 0).numpy())
+    return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
 
 
 def draw_keypoints(image, keypoints, labels, visible, show_all=False):
-    image_t = image_to_tensor(image)
-    d = image_t.size()[1] // 300
-    bboxes = [(xy[1] - d, xy[0] - d, xy[1] + d, xy[0] + d) for xy in keypoints]
-    colors = [COLORS[o.lower()] for o in labels]
+    if not isinstance(image, torch.Tensor):
+        image = image_to_tensor(image)
+    image = image.cpu()
+    d = image.size()[1] // 300
+    breakpoint()
+    bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints.cpu()]
+    colors = [COLORS[o.lower()] for o in labels.cpu()]
     if not show_all:
-        bboxes = [o for i, o in enumerate(bboxes) if visible[i]]
-        colors = [o for i, o in enumerate(colors) if visible[i]]
+        bboxes = [o for i, o in enumerate(bboxes) if visible.cpu()[i]]
+        colors = [o for i, o in enumerate(colors) if visible.cpu()[i]]
     bboxes = torch.tensor(bboxes, dtype=torch.float)
-    image_t = utils.draw_bounding_boxes(
-        image_t, bboxes, labels=labels, colors=colors, fill=True
+    image = utils.draw_bounding_boxes(
+        image, bboxes, labels=labels, colors=colors, fill=True
     )
-    return PIL.Image.fromarray(image_t.permute(1, 2, 0).numpy())
+    return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
