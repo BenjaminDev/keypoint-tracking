@@ -1,7 +1,7 @@
 import json
 from collections import defaultdict, namedtuple
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import Imath
 import numpy as np
@@ -54,18 +54,34 @@ KeypointInfo = namedtuple(
         "LEFT_SHOE_TOP",
         "LEFT_SHOE_INNER_SIDE",
         "LEFT_SHOE_FRONT",
+        # "BODY",
+        # "RIGHT_SHOE",
+        # "LEFT_SHOE",
+    ],
+    defaults=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],  # , 13, 14, 15],
+)
+
+RegionInfo = namedtuple(
+    "RegionInfo",
+    [
         "BODY",
         "RIGHT_SHOE",
         "LEFT_SHOE",
     ],
-    defaults=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    defaults=[13, 14, 15],
 )
+# Common Types
 Keypoints = KeypointInfo()
+Regions = RegionInfo()
 
+PImage = PIL.Image.Image
+TImage = torch.Tensor
+Points = List[Tuple[int, int]]
+TPoints = torch.Tensor
 
 class MetaData(BaseModel):
     source: Dict[str, str]
-    keypoints: List[Tuple[int, int]] # x,y
+    keypoints: List[Tuple[int, int]]  # x,y
     keypoint_labels: List[str] = Keypoints._fields
     visible: List[bool] = [False] * len(Keypoints._fields)
     bounding_boxes: Dict[str, Tuple[int, int, int, int]]  #  (xmin, ymin, xmax, ymax)
@@ -98,10 +114,16 @@ def exr2rgb(exr_file_discriptor, size):
 
 def mask_to_bounding_boxes(mask):
     bounding_boxes = defaultdict(tuple)
-    props = [o for o in regionprops(mask.astype("int")) if o.label in Keypoints]
+    props = [o for o in regionprops(mask.astype("int")) if o.label in Regions]
+    region_min_value = min(Regions._fields_defaults.values())
     for prop in props:
         ymin, xmin, ymax, xmax = prop.bbox
-        bounding_boxes[Keypoints._fields[prop.label - 1]] = (xmin, ymin, xmax, ymax)
+        bounding_boxes[Regions._fields[prop.label - region_min_value]] = (
+            xmin,
+            ymin,
+            xmax,
+            ymax,
+        )
     return bounding_boxes
 
 
@@ -111,11 +133,11 @@ def mask_to_keypoints(mask) -> Tuple[List[Tuple[int, int]], List[bool]]:
     present_keypoints_in_mask = np.unique(mask).astype("int")
     for kp_number in Keypoints:
         if not kp_number in present_keypoints_in_mask:
-            keypoints.append((0,0))
+            keypoints.append((0, 0))
             visible.append(False)
             continue
-        y,x = ndimage.measurements.center_of_mass((mask == kp_number))
-        kp = (x,y)
+        y, x = ndimage.measurements.center_of_mass((mask == kp_number))
+        kp = (x, y)
         visible.append(not any([np.isnan(o) for o in kp]))
         if any([np.isnan(o) for o in kp]):
             kp = (0, 0)
@@ -141,17 +163,33 @@ def draw_bounding_box(image, bounding_boxes: Dict):
     return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
 
 
-def draw_keypoints(image, keypoints, labels, visible, show_all=False):
+
+
+def draw_keypoints(
+    image: Union[PImage, TImage],
+    keypoints: Union[Points, TPoints],
+    labels: List[str],
+    visible: Union[List, torch.Tensor],
+    show_all: bool = False,
+):
     if not isinstance(image, torch.Tensor):
         image = image_to_tensor(image)
-    image = image.cpu()
+    image = image.cpu().type(torch.uint8)
+    if isinstance(keypoints, TPoints):
+        keypoints = keypoints.cpu()
+        keypoints = keypoints.reshape(-1, 2)
+    if keypoints[0][0] < 1:
+        # We have normalised coordinates. Convert back to image
+        _, h, w = image.shape  # (C x H x W)
+        keypoints = [(int(x * w), int(y * h)) for x, y in keypoints]
+    if isinstance(visible, torch.Tensor):
+        visible = visible.cpu()
     d = image.size()[1] // 300
-    breakpoint()
-    bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints.cpu()]
-    colors = [COLORS[o.lower()] for o in labels.cpu()]
+    bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints]
+    colors = [COLORS[o.lower()] for o in labels]
     if not show_all:
-        bboxes = [o for i, o in enumerate(bboxes) if visible.cpu()[i]]
-        colors = [o for i, o in enumerate(colors) if visible.cpu()[i]]
+        bboxes = [o for i, o in enumerate(bboxes) if visible[i]]
+        colors = [o for i, o in enumerate(colors) if visible[i]]
     bboxes = torch.tensor(bboxes, dtype=torch.float)
     image = utils.draw_bounding_boxes(
         image, bboxes, labels=labels, colors=colors, fill=True

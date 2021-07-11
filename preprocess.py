@@ -54,7 +54,6 @@ if __name__ == "__main__":
         dw = exr_file_discriptor.header()["dataWindow"]
         size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
 
-
         # Get RGB and header
         image, header = exr2rgb(exr_file_discriptor, size)
         # Get Visible keypoints
@@ -93,7 +92,7 @@ if __name__ == "__main__":
             fp.write(meta.json(indent=4))
 
         # Read back and annotate to verify
-        (args.dst_dir/"annotated").mkdir(parents=True, exist_ok=True)
+        (args.dst_dir / "annotated").mkdir(parents=True, exist_ok=True)
         read_meta_back = read_meta(f"{os.fsdecode(args.dst_dir)}/{exr_file.stem}.json")
         img = draw_bounding_box(img, read_meta_back.bounding_boxes)
         draw_keypoints(
@@ -103,6 +102,3 @@ if __name__ == "__main__":
             read_meta_back.visible,
             show_all=True,
         ).save(f"{os.fsdecode(args.dst_dir)}/annotated/anno_{exr_file.stem}{args.ext}")
-
-
-
