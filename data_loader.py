@@ -24,11 +24,14 @@ import albumentations as A
 
 tfs = A.Compose(
     [
-        A.Resize(480, 540),
+        A.Resize(224, 224),
+
         # A.HorizontalFlip(p=0.5),
         # A.VerticalFlip(p=0.1), # need to fix c
         # A.ColorJitter(),
         # A.RandomBrightnessContrast(),
+        # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        # ToTensorV2()
     ],
     keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
 )
@@ -53,7 +56,7 @@ class KeypointsDataset(Dataset):
 
     def __getitem__(self, index):
         # index = 0
-        index = index % len(self.label_files)
+        # index = index % len(self.label_files)
         if self.train:
             image = cv2.imread(os.fsdecode(self.image_files[index]))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -68,6 +71,8 @@ class KeypointsDataset(Dataset):
             image = torch.tensor(trasformed["image"], dtype=torch.float32).permute(
                 2, 0, 1
             )
+            # breakpoint()
+            # image = trasformed["image"]
             _, h, w = image.shape  # (C x H x W)
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
             keypoints = torch.tensor(keypoints).type(torch.float)

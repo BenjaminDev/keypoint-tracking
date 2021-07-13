@@ -19,9 +19,10 @@ class Keypointdetector(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
-        self.feature_extractor = timm.create_model("resnet50", pretrained=True, num_classes=0)
+        self.model = timm.create_model("resnet50", pretrained=True, num_classes=2*num_keypoints)
         # self.feature_extractor.freeze()
-        self.head = nn.Linear(2048, out_features = 2*num_keypoints)
+        # self.head = nn.Linear(2048, out_features = 2*num_keypoints)
+        # self.transform_input = True
         # mm.create_model('resnet18', pretrained=True, num_classes=NUM_FINETUNE_CLASSES)
         # self.model.classifier = nn.Linear(1280, 2*num_keypoints)
         # x = self.model.features(x)
@@ -30,11 +31,13 @@ class Keypointdetector(pl.LightningModule):
 
     def forward(self, x):
         # x = x.view(x.size(0), -1)
-        self.feature_extractor.eval()
-        with torch.no_grad():
-            representations = self.feature_extractor(x).flatten(1)
-        x = self.head(representations)
-        return x
+                # imagenet normalisation
+
+        # self.feature_extractor.eval()
+        # with torch.no_grad():
+        #     representations = self.feature_extractor(x).flatten(1)
+        # x = self.head(representations)
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
         x, (keypoints, visible, labels) = batch
@@ -71,7 +74,7 @@ class Keypointdetector(pl.LightningModule):
 
     def configure_optimizers(self):
         print(self.hparams.learning_rate)
-        return torch.optim.Adam(self.head.parameters(), lr=self.learning_rate)
+        return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
     def validation_epoch_end(self, outputs) -> None:
         """Compute metrics on the full validation set.
@@ -100,7 +103,7 @@ def cli_main():
 
     model = Keypointdetector()
 
-    trainer = pl.Trainer(gpus=1, logger=wandb_logger, auto_lr_find=True)
+    trainer = pl.Trainer(gpus=1, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
     trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
     trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
 
