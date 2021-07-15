@@ -169,7 +169,7 @@ def draw_keypoints(
     image: Union[PImage, TImage],
     keypoints: Union[Points, TPoints],
     labels: List[str],
-    visible: Union[List, torch.Tensor],
+    visible: Union[List, torch.Tensor]=None,
     show_all: bool = False,
 ):
     if not isinstance(image, torch.Tensor):
@@ -182,7 +182,7 @@ def draw_keypoints(
         # We have normalised coordinates. Convert back to image
         _, h, w = image.shape  # (C x H x W)
         keypoints = [(int(x * w), int(y * h)) for x, y in keypoints]
-    if isinstance(visible, torch.Tensor):
+    if not visible is None and isinstance(visible, torch.Tensor):
         visible = visible.cpu()
     d = image.size()[1] // 300
     bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints]
@@ -195,3 +195,12 @@ def draw_keypoints(
         image, bboxes, labels=labels, colors=colors, fill=True
     )
     return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
+
+import cv2
+import os
+def load_image(image_path:Path, size:Tuple[int, int]):
+    image = PIL.Image.open(image_path).resize(size)
+    # image = cv2.imread(os.fsdecode(image_path))
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    return image_to_tensor(image).unsqueeze(0).type(torch.float)

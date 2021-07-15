@@ -1,5 +1,7 @@
 
+from typing import Tuple
 import pytorch_lightning as pl
+from pytorch_lightning import callbacks
 import timm
 import torch
 from pytorch_lightning.utilities.cli import LightningCLI
@@ -23,6 +25,7 @@ class Keypointdetector(pl.LightningModule):
         self,
         num_keypoints: int = 12,
         learning_rate: float = 0.0001,
+        output_image_size: Tuple[int, int] = (224, 224)
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -56,7 +59,7 @@ class Keypointdetector(pl.LightningModule):
                         dilation=2,
                         stride=1,
                         padding=1),
-                        nn.Upsample(size=(224, 224), mode="bilinear", align_corners=False),
+                        nn.Upsample(size=output_image_size, mode="bilinear", align_corners=False),
                         # nn.Conv2d(in_channels=num_points, out_channels=1, kernel_size=1)
 
                 )
@@ -132,7 +135,7 @@ class Keypointdetector(pl.LightningModule):
     def configure_optimizers(self):
         print(self.hparams.learning_rate)
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-    
+
     def validation_epoch_end(self, outputs) -> None:
         """Compute metrics on the full validation set.
         Args:
@@ -168,20 +171,22 @@ class Keypointdetector(pl.LightningModule):
 
 
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 wandb_logger = WandbLogger(
-    name="keypoints", project="wf", save_dir="/mnt/vol_b/models/keypoints"
+    name="keypoints", project="wf", save_dir="/mnt/vol_b/models/keypoints", log_model=True
 )
 
 
 def cli_main():
 
     model = Keypointdetector()
+    checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_b/models/')
 
-    trainer = pl.Trainer(gpus=1, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
+    trainer = pl.Trainer(gpus=1, max_epochs=3, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
     trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
     trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
-
+    trainer.save_checkpoint("example.ckpt")
 
 if __name__ == "__main__":
     # cli_lightning_logo()

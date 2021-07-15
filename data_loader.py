@@ -28,15 +28,15 @@ tfs = A.Compose(
 
         # A.HorizontalFlip(p=0.5),
         # A.VerticalFlip(p=0.1), # need to fix c
-        # A.ColorJitter(),
-        # A.RandomBrightnessContrast(),
+        A.ColorJitter(),
+        A.RandomBrightnessContrast(),
         # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         # ToTensorV2()
     ],
     keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
 )
 
-def generate_target(img, pt, sigma=3.5,  label_type='Gaussian'):
+def generate_target(img, pt, sigma,  label_type='Gaussian'):
     # Check that any part of the gaussian is in-bounds
     # REF: https://github.com/HRNet/HRNet-Facial-Landmark-Detection/blob/f776dbe8eb6fec831774a47209dae5547ae2cda5/lib/utils/transforms.py#L216
     tmp_size = sigma * 3
@@ -71,11 +71,13 @@ def generate_target(img, pt, sigma=3.5,  label_type='Gaussian'):
     return img
 
 class KeypointsDataset(Dataset):
-    def __init__(self, data_path: Path, train=True, transform=None):
+    def __init__(self, data_path: Path, target_scale: float = 100.0, sigma:float = 3.5, train=True, transform=None):
         super().__init__()
         self.data_path = Path(data_path)
         self.image_files = sorted(list(self.data_path.glob("*.png")))
         self.label_files = sorted(list(self.data_path.glob("*.json")))
+        self.target_scale = target_scale
+        self.sigma=sigma
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
@@ -106,8 +108,6 @@ class KeypointsDataset(Dataset):
             image = torch.tensor(trasformed["image"], dtype=torch.float32).permute(
                 2, 0, 1
             )
-            # breakpoint()
-            # image = trasformed["image"]
             _, h, w = image.shape  # (C x H x W)
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
             keypoints = torch.tensor(keypoints).type(torch.float)
@@ -118,8 +118,8 @@ class KeypointsDataset(Dataset):
             target = np.zeros((nparts, w, h))
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
-                target[i] = generate_target(target[i], (pt_x, pt_y))
-            target = torch.tensor(target, dtype=torch.float)*100
+                target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
+            target = torch.tensor(target, dtype=torch.float)*self.target_scale
 
         if len(numeric_labels) != len(keypoints):
             raise ValueError("Data is broken. missing labels")
@@ -145,15 +145,7 @@ class KeypointsDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str):
         super().__init__()
         self.data_dir = data_dir
-
-        # self.transform = transforms.Compose([transforms.Resize(480),transforms.ToTensor()])
         self.transform = tfs
-
-        # self.dims is returned when you call dm.size()
-        # Setting default dims here because we know them.
-        # Could optionally be assigned dynamically in dm.setup()
-        # self.num_classes = 10
-
     # def prepare_data(self):
     #     # download
 
@@ -187,7 +179,7 @@ if __name__ == "__main__":
     ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"), transform=tfs)
     sample, target = ds.plot_sample(0)
     sample.save("tmp2.png")
-
+    breakpoint()
     target = target*255
     for i in range(target.shape[0]):
         kp = (target[i]==torch.max(target[i])).nonzero()[0]
