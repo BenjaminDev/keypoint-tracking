@@ -15,7 +15,7 @@ from kornia.losses.focal import FocalLoss
 
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 criterion = nn.MSELoss(reduction='sum')
-
+import wandb
 
 
 
@@ -141,11 +141,11 @@ class Keypointdetector(pl.LightningModule):
         Args:
             outputs (Dict[str, Any]): Dict of values collected over each batch put through model.eval()(..)
         """
-        # wandb.log({"loss": 0.314, "epoch": 5,
-        #    "inputs": wandb.Image(inputs),
-        #    "logits": wandb.Histogram(ouputs),
-        #    "captions": wandb.HTML(captions)
-        #    })
+        wandb.log({"loss": 0.314, "epoch": 5,
+           "inputs": wandb.Image(inputs),
+           "logits": wandb.Histogram(ouputs),
+           "captions": wandb.HTML(captions)
+           })
         c = 0
         for image, y_hat, target, visible, labels in outputs:
             # breakpoint()
@@ -154,7 +154,7 @@ class Keypointdetector(pl.LightningModule):
                 keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
             label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
             res = draw_keypoints(
-                image, keypoints, label_names, visible, show_all=True
+                image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
             )
             res.save(f"tmp_{c}.png")
 
@@ -163,7 +163,7 @@ class Keypointdetector(pl.LightningModule):
                 keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
             label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
             res = draw_keypoints(
-                image, keypoints, label_names, visible, show_all=True
+                image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
             )
             res.save(f"truth_{c}.png")
 
@@ -179,13 +179,13 @@ wandb_logger = WandbLogger(
 
 
 def cli_main():
-
-    model = Keypointdetector()
+    input_size = (480,480)
+    model = Keypointdetector(output_image_size=input_size)
     checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_b/models/')
 
-    trainer = pl.Trainer(gpus=1, max_epochs=3, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
-    trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
-    trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2"))
+    trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
+    trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
+    trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
     trainer.save_checkpoint("example.ckpt")
 
 if __name__ == "__main__":

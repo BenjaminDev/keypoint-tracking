@@ -22,24 +22,14 @@ AVAIL_GPUS = min(1, torch.cuda.device_count())
 BATCH_SIZE = 4 if AVAIL_GPUS else 2
 import albumentations as A
 
-tfs = A.Compose(
-    [
-        A.Resize(224, 224),
 
-        # A.HorizontalFlip(p=0.5),
-        # A.VerticalFlip(p=0.1), # need to fix c
-        A.ColorJitter(),
-        A.RandomBrightnessContrast(),
-        # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        # ToTensorV2()
-    ],
-    keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
-)
 
 def generate_target(img, pt, sigma,  label_type='Gaussian'):
     # Check that any part of the gaussian is in-bounds
     # REF: https://github.com/HRNet/HRNet-Facial-Landmark-Detection/blob/f776dbe8eb6fec831774a47209dae5547ae2cda5/lib/utils/transforms.py#L216
     tmp_size = sigma * 3
+    if (tmp_size > pt[0]) or (tmp_size > pt[1]):
+        return img
     ul = [int(pt[0] - tmp_size), int(pt[1] - tmp_size)]
     br = [int(pt[0] + tmp_size + 1), int(pt[1] + tmp_size + 1)]
     if (ul[0] >= img.shape[1] or ul[1] >= img.shape[0] or
@@ -63,15 +53,17 @@ def generate_target(img, pt, sigma,  label_type='Gaussian'):
     # Usable gaussian range
     g_x = max(0, -ul[0]), min(br[0], img.shape[1]) - ul[0]
     g_y = max(0, -ul[1]), min(br[1], img.shape[0]) - ul[1]
+    # g_x, g_y = (0, g.shape[0]), (0, g.shape[1])
     # Image range
     img_x = max(0, ul[0]), min(br[0], img.shape[1])
     img_y = max(0, ul[1]), min(br[1], img.shape[0])
-
+    # img_x = max(0, ul[0]), min(ul[0]+g_x[1], img.shape[1])
+    # img_y = max(0, ul[1]), min(ul[1]+g_y[1], img.shape[0])
     img[img_y[0]:img_y[1], img_x[0]:img_x[1]] = g[g_y[0]:g_y[1], g_x[0]:g_x[1]]
     return img
 
 class KeypointsDataset(Dataset):
-    def __init__(self, data_path: Path, target_scale: float = 100.0, sigma:float = 3.5, train=True, transform=None):
+    def __init__(self, data_path: Path, target_scale: float = 100.0, sigma:float = 3, train=True, transform=None):
         super().__init__()
         self.data_path = Path(data_path)
         self.image_files = sorted(list(self.data_path.glob("*.png")))
@@ -109,6 +101,7 @@ class KeypointsDataset(Dataset):
                 2, 0, 1
             )
             _, h, w = image.shape  # (C x H x W)
+            self.sigma=float(h)/100.0
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
             keypoints = torch.tensor(keypoints).type(torch.float)
             numeric_labels = torch.tensor(trasformed["labels"]).type(torch.int64)
@@ -118,7 +111,10 @@ class KeypointsDataset(Dataset):
             target = np.zeros((nparts, w, h))
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
-                target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
+                try:
+                    target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
+                except Exception as e:
+                    breakpoint()
             target = torch.tensor(target, dtype=torch.float)*self.target_scale
 
         if len(numeric_labels) != len(keypoints):
@@ -138,14 +134,26 @@ class KeypointsDataset(Dataset):
         keypoints = []
         for i in range(target.shape[0]):
                 keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
-        return draw_keypoints(image, keypoints, label_names, visible, show_all), target
+        return draw_keypoints(image, keypoints, label_names, show_labels=True, short_names=True, visible=visible, show_all=show_all), target
 
 
 class KeypointsDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, input_size=(480, 480)):
         super().__init__()
         self.data_dir = data_dir
-        self.transform = tfs
+        self.transform = A.Compose(
+            [
+                A.Resize(*input_size),
+
+                # A.HorizontalFlip(p=0.5),
+                # A.VerticalFlip(p=0.1), # need to fix c
+                A.ColorJitter(),
+                A.RandomBrightnessContrast(),
+                # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                # ToTensorV2()
+            ],
+            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
+        )
     # def prepare_data(self):
     #     # download
 
@@ -175,8 +183,11 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-
-    ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"), transform=tfs)
+    dm = KeypointsDataModule(data_dir="/mnt/vol_b/clean_data/tmp2", input_size= (480, 480))
+    # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
+    dm.setup("fit")
+    ds = dm.keypoints_train
+    a= [o for o, _ in ds]
     sample, target = ds.plot_sample(0)
     sample.save("tmp2.png")
     breakpoint()

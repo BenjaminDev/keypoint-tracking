@@ -38,7 +38,20 @@ COLORS = {
     "right_shoe": "#FA6400",
     "body": "#FFFFFF",
 }
-
+sn = {
+    "RIGHT_SHOE_FRONT" : "RF",
+        "RIGHT_SHOE_TOP" : "RT",
+        "RIGHT_SHOE_OUTER_SIDE" : "RO",
+        "RIGHT_SHOE_INNER_SIDE" : "RI",
+        "RIGHT_SHOE_BACK": "RB",
+        "RIGHT_SHOE_ANKLE" : "RA",
+        "LEFT_SHOE_BACK" : "LB",
+        "LEFT_SHOE_ANKLE" : "LA",
+        "LEFT_SHOE_OUTER_SIDE" : "LO",
+        "LEFT_SHOE_TOP": "LT",
+        "LEFT_SHOE_INNER_SIDE" : "LI",
+        "LEFT_SHOE_FRONT" : "LF",
+}
 KeypointInfo = namedtuple(
     "KeypointInfo",
     [
@@ -169,6 +182,8 @@ def draw_keypoints(
     image: Union[PImage, TImage],
     keypoints: Union[Points, TPoints],
     labels: List[str],
+    show_labels: bool = True,
+    short_names:bool = True,
     visible: Union[List, torch.Tensor]=None,
     show_all: bool = False,
 ):
@@ -186,11 +201,18 @@ def draw_keypoints(
         visible = visible.cpu()
     d = image.size()[1] // 300
     bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints]
-    colors = [COLORS[o.lower()] for o in labels]
+    colors = None
+    if not labels is  None:
+        colors = [COLORS[o.lower()] for o in labels]
+
     if not show_all:
         bboxes = [o for i, o in enumerate(bboxes) if visible[i]]
         colors = [o for i, o in enumerate(colors) if visible[i]]
     bboxes = torch.tensor(bboxes, dtype=torch.float)
+    if not show_labels:
+        labels = None
+    if short_names and show_labels:
+        labels = [sn[o] for o in labels]
     image = utils.draw_bounding_boxes(
         image, bboxes, labels=labels, colors=colors, fill=True
     )
