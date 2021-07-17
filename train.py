@@ -8,10 +8,13 @@ from pytorch_lightning.utilities.cli import LightningCLI
 from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
-
+from typing import Dict
 from data_loader import KeypointsDataModule
 from utils import draw_keypoints, Keypoints
 from kornia.losses.focal import FocalLoss
+
+import plotly.figure_factory as ff
+import plotly.graph_objects as go
 
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 criterion = nn.MSELoss(reduction='sum')
@@ -65,7 +68,9 @@ class Keypointdetector(pl.LightningModule):
                 )
 
 
-
+        # self.head[0].register_hook(
+        #     lambda grad: self.logger.experiment.log({"head_grads": grad.cpu()})
+        # )
         # self.feature_extractor.freeze()
         # self.head = nn.Linear(2048, out_features = 2*num_keypoints)
         # self.transform_input = True
@@ -117,10 +122,10 @@ class Keypointdetector(pl.LightningModule):
         # breakpoint()
 
         loss = criterion(y_hat, targets)
-        self.log("valid_loss", loss)
+        self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0])//2):
             raise ValueError("Data is broken. missing labels")
-        return (x[0], y_hat[0], targets[0], visible[0], labels[0])
+        return (x, y_hat, targets, visible, labels)
 
     def test_step(self, batch, batch_idx):
         x, (targets, keypoints, visible, labels) = batch
@@ -135,54 +140,65 @@ class Keypointdetector(pl.LightningModule):
     def configure_optimizers(self):
         print(self.hparams.learning_rate)
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+    def training_epoch_end(self, outputs: Dict) -> None:
+        wandb.log(
+            {f"train_loss_hist": wandb.Histogram([[o["loss"].cpu() for o in outputs]])}
+        )
 
-    def validation_epoch_end(self, outputs) -> None:
+    def validation_epoch_end(self, all_batches_of_outputs) -> None:
         """Compute metrics on the full validation set.
         Args:
             outputs (Dict[str, Any]): Dict of values collected over each batch put through model.eval()(..)
         """
-        wandb.log({"loss": 0.314, "epoch": 5,
-           "inputs": wandb.Image(inputs),
-           "logits": wandb.Histogram(ouputs),
-           "captions": wandb.HTML(captions)
-           })
-        c = 0
-        for image, y_hat, target, visible, labels in outputs:
+        # wandb.log(
+        #     {f"val_loss_hist": wandb.Histogram([[h[-1] for h in batch_of_outputs]])}
+        # )
+        pred_images, truth_images = [], []
+        for batch_of_outputs in all_batches_of_outputs:
             # breakpoint()
-            keypoints=[]
-            for i in range(y_hat.shape[0]):
-                keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
-            label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
-            res = draw_keypoints(
-                image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
-            )
-            res.save(f"tmp_{c}.png")
+            # if len(outputs) != 5:
+            #     breakpoint()
+            for image, y_hat, target, visible, labels in zip(batch_of_outputs[0],batch_of_outputs[1],batch_of_outputs[2],batch_of_outputs[3], batch_of_outputs[4]) :
+                keypoints=[]
+                for i in range(y_hat.shape[0]):
+                    keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
+                label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
+                res_val = draw_keypoints(
+                    image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
+                )
+                pred_images.append(res_val)
 
-            keypoints=[]
-            for i in range(target.shape[0]):
-                keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
-            label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
-            res = draw_keypoints(
-                image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
-            )
-            res.save(f"truth_{c}.png")
+                keypoints=[]
+                for i in range(target.shape[0]):
+                    keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
+                label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
+                res = draw_keypoints(
+                    image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
+                )
+                truth_images.append(res)
 
-            c += 1
+        wandb.log({
+        f"Pred Keypoints":  [wandb.Image(o) for o in pred_images],
+        f"Truth Keypoints" : [wandb.Image(o) for o in truth_images]
+        })
+
 
 
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-wandb_logger = WandbLogger(
-    name="keypoints", project="wf", save_dir="/mnt/vol_b/models/keypoints", log_model=True
-)
 
 
 def cli_main():
+    wandb.init(name="keypoints", project="wf")
+    wandb_logger = WandbLogger(
+        name="keypoints", project="wf", save_dir="/mnt/vol_b/models/keypoints", log_model=True
+    )
     input_size = (480,480)
     model = Keypointdetector(output_image_size=input_size)
+    # wandb.watch(model)
     checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_b/models/')
-
+    # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
     trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
     trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
