@@ -1,26 +1,29 @@
 
-from typing import Tuple
+import argparse
+from typing import Dict, Tuple
+
+import hydra
+import plotly.figure_factory as ff
+import plotly.graph_objects as go
 import pytorch_lightning as pl
-from pytorch_lightning import callbacks
 import timm
 import torch
+# criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
+import wandb
+from kornia.losses.focal import FocalLoss
+from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning import callbacks
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.cli import LightningCLI
 from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
-from typing import Dict
+
 from data_loader import KeypointsDataModule
-from utils import draw_keypoints, Keypoints
-from kornia.losses.focal import FocalLoss
+from utils import Keypoints, draw_keypoints
 
-import plotly.figure_factory as ff
-import plotly.graph_objects as go
-
-# criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 criterion = nn.MSELoss(reduction='sum')
-import wandb
-
-
 
 
 class Keypointdetector(pl.LightningModule):
@@ -62,7 +65,7 @@ class Keypointdetector(pl.LightningModule):
                         dilation=2,
                         stride=1,
                         padding=1),
-                        nn.Upsample(size=output_image_size, mode="bilinear", align_corners=False),
+                        nn.Upsample(size=(output_image_size[0],output_image_size[1] ), mode="bilinear", align_corners=False),
                         # nn.Conv2d(in_channels=num_points, out_channels=1, kernel_size=1)
 
                 )
@@ -107,19 +110,20 @@ class Keypointdetector(pl.LightningModule):
         # Non visible keypoints should be dealt with. Set to zero loss?
         # keypoints = keypoints*torch.repeat_interleave(visible, 2, dim=1)
         # y_hat = y_hat*torch.repeat_interleave(visible, 2, dim=1)
-        # breakpoint()
+        #
         # keypoints = keypoints.view(keypoints.size(0), -1)
-        # breakpoint()
+        #
 
         loss = criterion(y_hat, targets)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
+
         x, (targets,keypoints, visible, labels) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
         y_hat = self(x)
-        # breakpoint()
+        #
 
         loss = criterion(y_hat, targets)
         self.log("val_loss", loss)
@@ -155,9 +159,9 @@ class Keypointdetector(pl.LightningModule):
         # )
         pred_images, truth_images = [], []
         for batch_of_outputs in all_batches_of_outputs:
-            # breakpoint()
+            #
             # if len(outputs) != 5:
-            #     breakpoint()
+            #
             for image, y_hat, target, visible, labels in zip(batch_of_outputs[0],batch_of_outputs[1],batch_of_outputs[2],batch_of_outputs[3], batch_of_outputs[4]) :
                 keypoints=[]
                 for i in range(y_hat.shape[0]):
@@ -184,26 +188,28 @@ class Keypointdetector(pl.LightningModule):
 
 
 
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
+import os
 
-
-
-def cli_main():
-    wandb.init(name="keypoints", project="wf")
+@hydra.main(config_path="./experiments", config_name="config_1.yaml")
+def cli_main(cfg: DictConfig):
+    wb=cfg.wb
+    wandb.init(name=wb.name, project=wb.project)
     wandb_logger = WandbLogger(
-        name="keypoints", project="wf", save_dir="/mnt/vol_b/models/keypoints", log_model=True
+        name=wb.name, project=wb.project, save_dir=wb.save_dir, log_model=True
     )
-    input_size = (480,480)
-    model = Keypointdetector(output_image_size=input_size)
+    cfg.model.input_size
+
+    model = Keypointdetector(output_image_size=cfg.model.input_size)
     # wandb.watch(model)
-    checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_b/models/')
+    # checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_c/models/', save_top_k=3)
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
+    data_dirs=[os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
+    print (data_dirs)
+    
     trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
-    trainer.tune(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
-    trainer.fit(model, KeypointsDataModule("/mnt/vol_b/clean_data/tmp2", input_size))
-    trainer.save_checkpoint("example.ckpt")
+    trainer.tune(model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))
+    trainer.fit(model,  KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))
+
 
 if __name__ == "__main__":
-    # cli_lightning_logo()
     cli_main()

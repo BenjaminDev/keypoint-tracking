@@ -1,8 +1,10 @@
 import os
 import warnings
 from pathlib import Path
+from typing import List, Tuple
 
 import cv2
+import numpy as np
 import PIL
 import pytorch_lightning as pl
 import torch
@@ -12,16 +14,15 @@ from albumentations.pytorch import ToTensorV2
 from pytorch_lightning.metrics.functional import accuracy
 from torch import nn
 # from torchvision.datasets import D
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
 from torchvision import transforms, utils
 from torchvision.datasets import CIFAR10, MNIST
-import numpy as np
+
 from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta
 
 AVAIL_GPUS = min(1, torch.cuda.device_count())
 BATCH_SIZE = 4 if AVAIL_GPUS else 2
 import albumentations as A
-
 
 
 def generate_target(img, pt, sigma,  label_type='Gaussian'):
@@ -138,9 +139,9 @@ class KeypointsDataset(Dataset):
 
 
 class KeypointsDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str, input_size=(480, 480)):
+    def __init__(self, data_dirs: List[str], input_size:Tuple[int,int]):
         super().__init__()
-        self.data_dir = data_dir
+        self.data_dirs = data_dirs
         self.transform = A.Compose(
             [
                 A.Resize(*input_size),
@@ -161,35 +162,44 @@ class KeypointsDataModule(pl.LightningDataModule):
 
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
-            self.keypoints_train = KeypointsDataset(
-                self.data_dir, train=True, transform=self.transform
-            )
-            self.keypoints_val = KeypointsDataset(
-                self.data_dir+'/val', train=True, transform=self.transform
-            )
-            sample_image, _ = self.keypoints_train[0]
-            self.dims = sample_image.shape
+            self.keypoints_train = ConcatDataset([KeypointsDataset(
+                data_dir, train=True, transform=self.transform
+            ) for data_dir in self.data_dirs])
+            self.keypoints_val = ConcatDataset([KeypointsDataset(
+                data_dir+'/val', train=True, transform=self.transform
+            ) for data_dir in self.data_dirs])
+            # sample_image, _ = self.keypoints_train[0]
+            # self.dims = sample_image.shape
         # Assign test dataset for use in dataloader(s)
-        # if stage == 'test' or stage is None:
+        if stage == 'test' or stage is None:
+            self.keypoints_test = ConcatDataset([KeypointsDataset(
+                data_dir+'/test', train=True, transform=self.transform
+            ) for data_dir in self.data_dirs])
+
 
     def train_dataloader(self):
-        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE, num_workers=4)
+        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
 
     def val_dataloader(self):
-        return DataLoader(self.keypoints_val, batch_size=BATCH_SIZE, num_workers=4)
+        return DataLoader(self.keypoints_val, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
 
     def test_dataloader(self):
-        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE)
+        return DataLoader(self.keypoints_test, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
 
 
 if __name__ == "__main__":
-    dm = KeypointsDataModule(data_dir="/mnt/vol_b/clean_data/tmp2", input_size= (480, 480))
+    data_dirs=[""]
+    input_size=(480, 480)
+    dm = KeypointsDataModule(data_dirs, input_size)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
-    ds = dm.keypoints_train
-    a= [o for o, _ in ds]
-    sample, target = ds.plot_sample(0)
-    sample.save("tmp2.png")
+    dl = dm.train_dataloader()
+    for o, _ in dl:
+        pass
+
+    breakpoint()
+    sample, target = dl.dataset.datasets[0].plot_sample(0)
+    sample.save("/tmp/tmp2.png")
     breakpoint()
     target = target*255
     for i in range(target.shape[0]):
@@ -197,9 +207,9 @@ if __name__ == "__main__":
 
     # target = target.permute(2, 0, 1)
     for i in range(target.shape[0]):
-        PIL.Image.fromarray(target[i].numpy().astype('uint8')).convert("RGB").save(f"{i}_target.png")
+        PIL.Image.fromarray(target[i].numpy().astype('uint8')).convert("RGB").save(f"/tmp/{i}_target.png")
     # t.save("mask.png")
     v, _ = torch.max(target,0)
 
-    new_img = PIL.Image.blend(sample, PIL.Image.fromarray(v.numpy().astype('uint8')).convert("RGB"), 0.5).save("target.png")
+    new_img = PIL.Image.blend(sample, PIL.Image.fromarray(v.numpy().astype('uint8')).convert("RGB"), 0.5).save("/tmp/target.png")
 

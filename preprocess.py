@@ -32,7 +32,10 @@ def process_data(exr_file, args):
     bounding_boxes = mask_to_bounding_boxes(mask)
     # Read "MASK" exr file
     meta_file = os.fsdecode(exr_file).replace(args.rgb_tag, args.mask_tag)
-    exr_file_discriptor = OpenEXR.InputFile(os.fsdecode(meta_file))
+    try:
+        exr_file_discriptor = OpenEXR.InputFile(os.fsdecode(meta_file))
+    except OSError:
+        return
     dw = exr_file_discriptor.header()["dataWindow"]
     size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
     # Get all keypoints
