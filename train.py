@@ -3,6 +3,7 @@ import argparse
 from typing import Dict, Tuple
 
 import hydra
+from numpy import heaviside
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import pytorch_lightning as pl
@@ -19,7 +20,9 @@ from pytorch_lightning.utilities.cli import LightningCLI
 from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
-
+from PIL import Image
+from matplotlib import cm
+import numpy as np
 from data_loader import KeypointsDataModule
 from utils import Keypoints, draw_keypoints
 
@@ -105,7 +108,7 @@ class Keypointdetector(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
-        x, (targets, keypoints, visible, labels) = batch
+        x, (targets, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
         # Non visible keypoints should be dealt with. Set to zero loss?
         # keypoints = keypoints*torch.repeat_interleave(visible, 2, dim=1)
@@ -120,7 +123,7 @@ class Keypointdetector(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
 
-        x, (targets,keypoints, visible, labels) = batch
+        x, (targets,keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
         y_hat = self(x)
         #
@@ -129,10 +132,10 @@ class Keypointdetector(pl.LightningModule):
         self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0])//2):
             raise ValueError("Data is broken. missing labels")
-        return (x, y_hat, targets, visible, labels)
+        return (x, y_hat, targets, visible, labels, captions)
 
     def test_step(self, batch, batch_idx):
-        x, (targets, keypoints, visible, labels) = batch
+        x, (targets, keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
 
         y_hat = self(x)
@@ -157,16 +160,22 @@ class Keypointdetector(pl.LightningModule):
         # wandb.log(
         #     {f"val_loss_hist": wandb.Histogram([[h[-1] for h in batch_of_outputs]])}
         # )
-        pred_images, truth_images = [], []
-        for batch_of_outputs in all_batches_of_outputs:
+        pred_images, truth_images, captions = [], [], []
+        heatmaps = []
+        for batch_of_outputs in all_batches_of_outputs[::4]:
             #
             # if len(outputs) != 5:
             #
-            for image, y_hat, target, visible, labels in zip(batch_of_outputs[0],batch_of_outputs[1],batch_of_outputs[2],batch_of_outputs[3], batch_of_outputs[4]) :
+            for image, y_hat, target, visible, labels, caption in zip(batch_of_outputs[0],batch_of_outputs[1],batch_of_outputs[2],batch_of_outputs[3], batch_of_outputs[4], batch_of_outputs[5]) :
+
                 keypoints=[]
                 for i in range(y_hat.shape[0]):
                     keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
                 label_names = [Keypoints._fields[o-1] for o in labels.cpu()]
+
+                heatmaps.append(Image.fromarray(np.uint8(cm.viridis(y_hat[i].cpu().numpy())*255)))
+
+
                 res_val = draw_keypoints(
                     image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
                 )
@@ -180,10 +189,12 @@ class Keypointdetector(pl.LightningModule):
                     image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
                 )
                 truth_images.append(res)
+                captions.append(caption)
 
         wandb.log({
-        f"Pred Keypoints":  [wandb.Image(o) for o in pred_images],
-        f"Truth Keypoints" : [wandb.Image(o) for o in truth_images]
+            f"Pred Keypoints":  [wandb.Image(o, caption=c) for o, c in zip(pred_images, captions)],
+            f"Truth Keypoints" : [wandb.Image(o, caption=c) for o, c in zip(truth_images, captions)],
+            f"Heatmaps" : [wandb.Image(o) for o in heatmaps]
         })
 
 
@@ -205,7 +216,7 @@ def cli_main(cfg: DictConfig):
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     data_dirs=[os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
     print (data_dirs)
-    
+
     trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
     trainer.tune(model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))
     trainer.fit(model,  KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))

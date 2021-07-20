@@ -21,7 +21,7 @@ from torchvision.datasets import CIFAR10, MNIST
 from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta
 
 AVAIL_GPUS = min(1, torch.cuda.device_count())
-BATCH_SIZE = 4 if AVAIL_GPUS else 2
+BATCH_SIZE = 2 if AVAIL_GPUS else 2
 import albumentations as A
 
 
@@ -74,6 +74,7 @@ class KeypointsDataset(Dataset):
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
+            # breakpoint()
             raise ValueError("Image files and label files mismatch")
         self.category_names = Keypoints._fields
         self.transform = transform
@@ -120,7 +121,7 @@ class KeypointsDataset(Dataset):
 
         if len(numeric_labels) != len(keypoints):
             raise ValueError("Data is broken. missing labels")
-        return image, (target,keypoints.view(keypoints.size(0), -1), visible, numeric_labels)
+        return image, (target,keypoints.view(keypoints.size(0), -1), visible, numeric_labels, self.image_files[index].stem)
 
     def plot_sample(self, index, show_all=True):
         image, (target, keypoints, visible, numeric_labels) = self[index]

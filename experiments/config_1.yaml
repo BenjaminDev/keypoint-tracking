@@ -7,14 +7,15 @@ data:
   base_dir: /mnt/vol_b/training_data/clean
   sets:
     - 0004-bare-feet/source/v001
-    # - 0003-socks/source/v001
-    # - 0004-bare-feet/source/v001
-    # - 0007-socks/source/v002
-    # - 0008-sophie/source/v001
+    - 0003-socks/source/v001
+    - 0004-bare-feet/source/v001
+    - 0007-socks/source/v002
+    - 0008-sophie/source/v001
 
 model:
   input_size: [480, 480]
 
 trainer:
   max_epochs: 200
+  batch_size: 2
 
