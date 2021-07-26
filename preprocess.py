@@ -132,7 +132,8 @@ if __name__ == "__main__":
     #     rgb_tag = args.rgb_tag
     # tmp = list(args.src_dir.glob(f"*{rgb_tag}*.exr"))
     # breakpoint()
-    Parallel(n_jobs=os.cpu_count())(delayed(process_data)(exr_file, args) for exr_file in tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num]))
+    n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
+    Parallel(n_jobs=n_jobs)(delayed(process_data)(exr_file, args) for exr_file in tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num]))
     # for i, exr_file in enumerate(tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num])):
 
     #     # Read "RGB" exr file

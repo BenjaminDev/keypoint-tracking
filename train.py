@@ -47,6 +47,7 @@ class Keypointdetector(pl.LightningModule):
         # BN_MOMENTUM = 0.01
         # FINAL_CONV_KERNEL=1
         # num_points=24
+        self.valdation_count = 0
         final_inp_channels = 960
         BN_MOMENTUM = 0.01
         FINAL_CONV_KERNEL=1
@@ -96,6 +97,7 @@ class Keypointdetector(pl.LightningModule):
         # x = self.head(representations)
         # return self.model(x)
         # return self.head(self.features(x)).squeeze(-1).squeeze(-1)
+
         x = self.features(x)
 
         height, width = x[0].size(2), x[0].size(3)
@@ -132,7 +134,9 @@ class Keypointdetector(pl.LightningModule):
         self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0])//2):
             raise ValueError("Data is broken. missing labels")
-        return (x, y_hat, targets, visible, labels, captions)
+        self.valdation_count +=1
+        if self.valdation_count % 10 == 0:
+            return (x, y_hat, targets, visible, labels, captions, loss)
 
     def test_step(self, batch, batch_idx):
         x, (targets, keypoints, visible, labels, captions) = batch
@@ -157,16 +161,20 @@ class Keypointdetector(pl.LightningModule):
         Args:
             outputs (Dict[str, Any]): Dict of values collected over each batch put through model.eval()(..)
         """
-        # wandb.log(
-        #     {f"val_loss_hist": wandb.Histogram([[h[-1] for h in batch_of_outputs]])}
-        # )
+        # FIXME: don't call cuda here do .to(device)
+        MEAN = 255*torch.tensor([0.485, 0.456, 0.406]).cuda()
+        STD = 255*torch.tensor([0.229, 0.224, 0.225]).cuda()
         pred_images, truth_images, captions = [], [], []
         heatmaps = []
-        for batch_of_outputs in all_batches_of_outputs[::4]:
+        wandb.log(
+            {f"val_loss_hist": wandb.Histogram([o[-1].cpu() for o in all_batches_of_outputs])}
+        )
+        for batch_of_outputs in all_batches_of_outputs[::10]:
             #
             # if len(outputs) != 5:
             #
             for image, y_hat, target, visible, labels, caption in zip(batch_of_outputs[0],batch_of_outputs[1],batch_of_outputs[2],batch_of_outputs[3], batch_of_outputs[4], batch_of_outputs[5]) :
+                image = image * STD[:, None, None] + MEAN[:, None, None]
 
                 keypoints=[]
                 for i in range(y_hat.shape[0]):
@@ -179,6 +187,7 @@ class Keypointdetector(pl.LightningModule):
                 res_val = draw_keypoints(
                     image, keypoints, label_names, show_labels = True, short_names = True, visible=visible, show_all=True
                 )
+                # if denormalize:
                 pred_images.append(res_val)
 
                 keypoints=[]

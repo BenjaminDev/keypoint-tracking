@@ -11,6 +11,7 @@ data:
     - 0004-bare-feet/source/v001
     - 0007-socks/source/v002
     - 0008-sophie/source/v001
+    # - 0002-reference-video-2/source/v001
 
 model:
   input_size: [480, 480]

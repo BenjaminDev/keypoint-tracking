@@ -123,16 +123,20 @@ class KeypointsDataset(Dataset):
             raise ValueError("Data is broken. missing labels")
         return image, (target,keypoints.view(keypoints.size(0), -1), visible, numeric_labels, self.image_files[index].stem)
 
-    def plot_sample(self, index, show_all=True):
-        image, (target, keypoints, visible, numeric_labels) = self[index]
+    def plot_sample(self, index, show_all=True, denormalize=True):
+        image, (target, keypoints, visible, numeric_labels, source_filename) = self[index]
         label_names = [Keypoints._fields[o-1] for o in numeric_labels]
         if not image.shape[0] in {1, 3}:
             warnings.WarningMessage(
                 "Assuming image needs to be permuted into (c x h x w)"
             )
             image = image.permute(2, 0, 1)
-        image = image.type(torch.uint8)
+        if denormalize:
+            MEAN = 255*torch.tensor([0.485, 0.456, 0.406])
+            STD = 255*torch.tensor([0.229, 0.224, 0.225])
 
+            image = image * STD[:, None, None] + MEAN[:, None, None]
+        image = image.type(torch.uint8)
         keypoints = []
         for i in range(target.shape[0]):
                 keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
@@ -143,16 +147,19 @@ class KeypointsDataModule(pl.LightningDataModule):
     def __init__(self, data_dirs: List[str], input_size:Tuple[int,int]):
         super().__init__()
         self.data_dirs = data_dirs
-        self.transform = A.Compose(
+        self.train_transforms = A.Compose(
             [
                 A.Resize(*input_size),
-
-                # A.HorizontalFlip(p=0.5),
-                # A.VerticalFlip(p=0.1), # need to fix c
                 A.ColorJitter(),
                 A.RandomBrightnessContrast(),
-                # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                # ToTensorV2()
+                A.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])),
+            ],
+            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
+        )
+        self.test_transforms = A.Compose(
+            [
+                A.Resize(*input_size),
+                A.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])),
             ],
             keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
         )
@@ -164,32 +171,32 @@ class KeypointsDataModule(pl.LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
             self.keypoints_train = ConcatDataset([KeypointsDataset(
-                data_dir, train=True, transform=self.transform
+                data_dir, train=True, transform=self.train_transforms
             ) for data_dir in self.data_dirs])
             self.keypoints_val = ConcatDataset([KeypointsDataset(
-                data_dir+'/val', train=True, transform=self.transform
+                data_dir+'/val', train=True, transform=self.train_transforms
             ) for data_dir in self.data_dirs])
             # sample_image, _ = self.keypoints_train[0]
             # self.dims = sample_image.shape
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
             self.keypoints_test = ConcatDataset([KeypointsDataset(
-                data_dir+'/test', train=True, transform=self.transform
+                data_dir+'/test', train=True, transform=self.test_transforms
             ) for data_dir in self.data_dirs])
 
 
     def train_dataloader(self):
-        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
+        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE, num_workers=os.cpu_count(), shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.keypoints_val, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
+        return DataLoader(self.keypoints_val, batch_size=BATCH_SIZE, num_workers=os.cpu_count(),shuffle=True)
 
     def test_dataloader(self):
-        return DataLoader(self.keypoints_test, batch_size=BATCH_SIZE, num_workers=os.cpu_count())
+        return DataLoader(self.keypoints_test, batch_size=BATCH_SIZE, num_workers=os.cpu_count(), shuffle=True)
 
 
 if __name__ == "__main__":
-    data_dirs=[""]
+    data_dirs=["/mnt/vol_b/training_data/clean/0004-bare-feet/source/v001"]
     input_size=(480, 480)
     dm = KeypointsDataModule(data_dirs, input_size)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))

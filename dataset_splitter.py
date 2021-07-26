@@ -37,7 +37,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     image_files = sorted(list(args.src_dir.glob(f"*{args.ext}")))
     json_files = sorted(list(args.src_dir.glob(f"*.json")))
-
+    for json_file, image_file in zip(json_files, image_files):
+        if json_file.stem != image_file.stem:
+            raise Exception(f"we have a big problem! meta and image file mismatch: {json_file.stem}.json not paired with {image_file.stem}.png")
     total = len(image_files)
     total_num_val_and_test = int(total*(args.pct_val+args.pct_test))
     total_num_val = int(total*(args.pct_val))
@@ -57,7 +59,7 @@ if __name__ == "__main__":
         image_file = image_files[sample_idx]
         json_file = json_files[sample_idx]
         if json_file.stem != image_file.stem:
-            raise Exception("we have a big problem! meta and image file mismatch")
+            raise Exception(f"we have a big problem! meta and image file mismatch: {json_file.stem} != {image_file.stem}")
         shutil.move(image_file, image_file.parent/'val'/f"{image_file.stem}{image_file.suffix}")
         shutil.move(json_file, json_file.parent/'val'/f"{json_file.stem}{json_file.suffix}")
 
