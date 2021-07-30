@@ -32,6 +32,7 @@ criterion = nn.MSELoss(reduction='sum')
 class Keypointdetector(pl.LightningModule):
     def __init__(
         self,
+        inferencing:bool = False,
         num_keypoints: int = 12,
         learning_rate: float = 0.0001,
         output_image_size: Tuple[int, int] = (224, 224)
@@ -39,6 +40,7 @@ class Keypointdetector(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
+        self.inferencing = inferencing
         # self.model = timm.create_model("hrnet_w18", pretrained=True, num_classes=2*num_keypoints)
         self.features = timm.create_model('hrnet_w18', pretrained=True,features_only=True, num_classes=0, global_pool='')
         # self.model = timm.create_model('resnet50', pretrained=True, num_classes=0, global_pool='')
@@ -105,8 +107,10 @@ class Keypointdetector(pl.LightningModule):
         x2 = F.interpolate(x[2], size=(height, width), mode='bilinear', align_corners=False)
         x3 = F.interpolate(x[3], size=(height, width), mode='bilinear', align_corners=False)
         x = torch.cat([x[0], x1, x2, x3], 1)
-
-        return self.head(x).squeeze(-1).squeeze(-1)
+        if self.inferencing:
+            preds = self.head(x).squeeze(0)
+            return preds
+        return self.head(x)
 
 
     def training_step(self, batch, batch_idx):
