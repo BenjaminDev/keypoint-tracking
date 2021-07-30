@@ -12,6 +12,7 @@ from coremltools.models import pipeline
 import numpy as np
 # import onnxruntime
 import coremltools as ct
+from datetime import datetime
 import cv2
 from pathlib import Path
 import os
@@ -90,8 +91,8 @@ y_hat = torch.tensor(outputs["4254"])
 
 for i in range(y_hat.shape[0]):
     manual_decoded_keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
-    label_names = [Keypoints._fields[o] for o in range(12)]
 
+label_names = [Keypoints._fields[o] for o in range(12)]
 res = draw_keypoints(
     image, manual_decoded_keypoints, labels=label_names, show_labels=True, show_all=True)
 res.save(os.fsdecode(args.model_dir_dst/f"manual_decode_out.png"))
@@ -135,22 +136,23 @@ out.name = "coordinates"
 out.type.multiArrayType.MergeFromString(b"")
 out.type.multiArrayType.dataType = ct.proto.Model_pb2.ArrayFeatureType.DOUBLE
 
+builder.spec.description.metadata.shortDescription = "Shoe keypoint detector"
+builder.spec.description.metadata.author = "Boulderama"
+builder.spec.description.metadata.versionString = f"{args.model_path.stem} - {datetime.now().isoformat()}"
+
 adjusted_model = ct.models.MLModel(builder.spec)
 adjusted_model.save(os.fsdecode(args.model_dir_dst/f"Pipeline.mlmodel"))
 
 # Load the final model and validate the outputs
 spec = ct.utils.load_spec(os.fsdecode(args.model_dir_dst/f"Pipeline.mlmodel"))
 model = ct.models.MLModel(spec)
-# [[260, 252], [260, 238], [272, 233], [248, 245], [245, 203], [252, 201], [211, 242], [198, 215], [181, 239], [197, 242], [211, 244], [195, 260]]
 image = PIL.Image.open(test_image_path).resize(input_size)
 outputs = model.predict({"input": image})
-
-label_names = [Keypoints._fields[o-1] for o in range(12)]
 
 kps=outputs["coordinates"]
 
 annotated_image = draw_keypoints(image, kps, labels=label_names, show_labels=True, show_all=True)
-annotated_image.save("Pipeline_model_output.png")
+annotated_image.save(os.fsdecode(args.model_dir_dst/"Pipeline_model_output.png"))
 # Final check!
 for x_rel_y_rel, x_md_abs_y_md_abs in zip(kps, manual_decoded_keypoints):
     x_rel, y_rel = x_rel_y_rel

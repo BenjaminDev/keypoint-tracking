@@ -12,6 +12,14 @@ python -m pip install -r requirements.txt
 python pr
 ```
 
+## Training
+
+## Export model to coreml
+```
+python export_model.py --mpath ./epoch=51-step=11908.ckpt --mdir-dst ./outputs --no-trace
+```
+
+
 export video: `ffmpeg -framerate 25 -i 'TRAIN_v004_.0%3d_out.png' -c:v libx264 -pix_fmt yuv420p out.mp4`
 Split video `ffmpeg -i {} -r 25 'frame_%3d.png'`
 
