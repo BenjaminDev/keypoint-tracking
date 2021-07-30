@@ -1,23 +1,24 @@
 
-import coremltools
-import warnings
-from coremltools import models
-from pytorch_lightning.utilities.warnings import LightningDeprecationWarning
+import argparse
+import json
+import os
+# import warnings
+from datetime import datetime
+from pathlib import Path
+
+# import onnxruntime
+# import coremltools
+import coremltools as ct
+# import cv2
+# import numpy as np
+import PIL
+import torch
+# from coremltools import models
+# from coremltools.models import pipeline
+# from pytorch_lightning.utilities.warnings import LightningDeprecationWarning
+
 from train import Keypointdetector
 from utils import Keypoints, draw_keypoints
-import torch
-from utils import draw_keypoints, Keypoints
-import json
-from coremltools.models import pipeline
-import numpy as np
-# import onnxruntime
-import coremltools as ct
-from datetime import datetime
-import cv2
-from pathlib import Path
-import os
-import PIL
-import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."
