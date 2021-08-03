@@ -32,23 +32,17 @@ criterion = nn.MSELoss(reduction='sum')
 class Keypointdetector(pl.LightningModule):
     def __init__(
         self,
+        config:DictConfig,
+        output_image_size: Tuple[int, int],
         inferencing:bool = False,
         num_keypoints: int = 12,
         learning_rate: float = 0.0001,
-        output_image_size: Tuple[int, int] = (224, 224)
     ):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.inferencing = inferencing
-        # self.model = timm.create_model("hrnet_w18", pretrained=True, num_classes=2*num_keypoints)
         self.features = timm.create_model('hrnet_w18', pretrained=True,features_only=True, num_classes=0, global_pool='')
-        # self.model = timm.create_model('resnet50', pretrained=True, num_classes=0, global_pool='')
-        # self.features = timm.create_model('hrnet_w18', pretrained=True, num_classes=0, global_pool='')
-        # final_inp_channels = 2048
-        # BN_MOMENTUM = 0.01
-        # FINAL_CONV_KERNEL=1
-        # num_points=24
         self.valdation_count = 0
         final_inp_channels = 960
         BN_MOMENTUM = 0.01
@@ -77,28 +71,9 @@ class Keypointdetector(pl.LightningModule):
                 )
 
 
-        # self.head[0].register_hook(
-        #     lambda grad: self.logger.experiment.log({"head_grads": grad.cpu()})
-        # )
-        # self.feature_extractor.freeze()
-        # self.head = nn.Linear(2048, out_features = 2*num_keypoints)
-        # self.transform_input = True
-        # mm.create_model('resnet18', pretrained=True, num_classes=NUM_FINETUNE_CLASSES)
-        # self.model.classifier = nn.Linear(1280, 2*num_keypoints)
-        # x = self.model.features(x)
-        # x = F.adaptive_avg_pool2d(x, 1).reshape(batch, -1)
-        # l0 = self.l0(x
 
     def forward(self, x):
-        # x = x.view(x.size(0), -1)
-                # imagenet normalisation
 
-        # self.feature_extractor.eval()
-        # with torch.no_grad():
-        #     representations = self.feature_extractor(x).flatten(1)
-        # x = self.head(representations)
-        # return self.model(x)
-        # return self.head(self.features(x)).squeeze(-1).squeeze(-1)
 
         x = self.features(x)
 
@@ -116,15 +91,7 @@ class Keypointdetector(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, (targets, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
-        # Non visible keypoints should be dealt with. Set to zero loss?
-        # keypoints = keypoints*torch.repeat_interleave(visible, 2, dim=1)
-        # y_hat = y_hat*torch.repeat_interleave(visible, 2, dim=1)
-        #
-        # keypoints = keypoints.view(keypoints.size(0), -1)
-        #
-
         loss = criterion(y_hat, targets)
-
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -223,14 +190,14 @@ def cli_main(cfg: DictConfig):
     )
     cfg.model.input_size
 
-    model = Keypointdetector(output_image_size=cfg.model.input_size)
+    model = Keypointdetector(config=cfg, output_image_size=cfg.model.input_size)
     # wandb.watch(model)
     # checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_c/models/', save_top_k=3)
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     data_dirs=[os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
     print (data_dirs)
 
-    trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2)
+    trainer = pl.Trainer(gpus=1, max_epochs=200, logger=wandb_logger, auto_lr_find=True, track_grad_norm=2, precision=16)
     trainer.tune(model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))
     trainer.fit(model,  KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size))
 

@@ -21,7 +21,7 @@ from torchvision.datasets import CIFAR10, MNIST
 from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta
 
 AVAIL_GPUS = min(1, torch.cuda.device_count())
-BATCH_SIZE = 2 if AVAIL_GPUS else 2
+BATCH_SIZE = 4 if AVAIL_GPUS else 4
 import albumentations as A
 
 
@@ -46,7 +46,6 @@ def generate_target(img, pt, sigma,  label_type='Gaussian'):
     x0 = y0 = size // 2
     # The gaussian is not normalized, we want the center value to equal 1
     if label_type == 'Gaussian':
-        # breakpoint()
         g = np.exp(- ((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
     else:
         g = sigma / (((x - x0) ** 2 + (y - y0) ** 2 + sigma ** 2) ** 1.5)
@@ -69,12 +68,15 @@ class KeypointsDataset(Dataset):
         self.data_path = Path(data_path)
         self.image_files = sorted(list(self.data_path.glob("*.png")))
         self.label_files = sorted(list(self.data_path.glob("*.json")))
-        self.target_scale = target_scale
+        self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
-            # breakpoint()
+            for l, i in zip(self.label_files, self.image_files):
+                if l.stem != i.stem:
+                    print(f"{l.stem} {i.stem}")
+            breakpoint()
             raise ValueError("Image files and label files mismatch")
         self.category_names = Keypoints._fields
         self.transform = transform
@@ -84,8 +86,6 @@ class KeypointsDataset(Dataset):
         return len(self.label_files)
 
     def __getitem__(self, index):
-        # index = 0
-        # index = index % len(self.label_files)
         if self.train:
             image = cv2.imread(os.fsdecode(self.image_files[index]))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -94,16 +94,13 @@ class KeypointsDataset(Dataset):
             visible = torch.tensor(metadata.visible, dtype=torch.float)
             labels = metadata.keypoint_labels
             numeric_labels = [Keypoints._fields_defaults[o] for o in metadata.keypoint_labels]
-            # if tpts[i, 1] > 0:
-                # tpts[i, 0:2] = transform_pixel(tpts[i, 0:2]+1, center,
-                #                                scale, self.output_size, rot=r)
         if self.transform:
             trasformed = self.transform(image=image,keypoints=keypoints, labels=numeric_labels, visible=visible)
             image = torch.tensor(trasformed["image"], dtype=torch.float32).permute(
                 2, 0, 1
             )
             _, h, w = image.shape  # (C x H x W)
-            self.sigma=float(h)/100.0
+            self.sigma=float(h)/100.0 # TODO: See how to change this and ideally make it smaller as the model trains. self.trainer.current_epoch should be it!
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
             keypoints = torch.tensor(keypoints).type(torch.float)
             numeric_labels = torch.tensor(trasformed["labels"]).type(torch.int64)

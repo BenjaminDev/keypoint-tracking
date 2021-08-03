@@ -5,3 +5,5 @@
 *.png
 wandb/*
 outputs/*
+*.onnx
+*.mlmodel
