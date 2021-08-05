@@ -3,7 +3,11 @@ name: Reaper
 on:
   schedule:
     - cron:  '0 0 * * *'
-
+  workflow_dispatch:
+    inputs:
+        message:
+          description: 'why'
+          required: false
 jobs:
   end_trainer:
     # This job will kill the Equinix host called "packer-builder-host"
