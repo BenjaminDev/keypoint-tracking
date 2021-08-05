@@ -1,8 +1,8 @@
 name: Reaper
 
 on:
-  schedule:
-    - cron:  '0 0 * * *'
+  # schedule:
+  #   - cron:  '0 0 * * *'
   workflow_dispatch:
     inputs:
         message:
@@ -12,7 +12,7 @@ jobs:
   end_trainer:
     # This job will kill the Equinix host called "packer-builder-host"
     timeout-minutes: 10
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - name: Kill
         run: |
