@@ -1,8 +1,8 @@
 name: Reaper
 
 on:
-  # schedule:
-  #   - cron:  '0 0 * * *'
+  schedule:
+    - cron:  '0 0 * * *'
   workflow_dispatch:
     inputs:
         message:
@@ -17,4 +17,4 @@ jobs:
       - name: Kill
         run: |
               idd=$(curl -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}"   https://api.genesiscloud.com/compute/v1/instances | jq -r '.instances[0].id')
-              curl -d '{"action": "start"}' -X POST -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}" -H "Content-Type: application/json"  "https://api.genesiscloud.com/compute/v1/instances/$idd/actions" | jq
+              curl -d '{"action": "stop"}' -X POST -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}" -H "Content-Type: application/json"  "https://api.genesiscloud.com/compute/v1/instances/$idd/actions"
