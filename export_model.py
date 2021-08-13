@@ -88,7 +88,10 @@ existing_model = ct.utils.load_spec(os.fsdecode(args.model_dir_dst/f"heatmap_onl
 heatmap_model = ct.models.MLModel(existing_model)
 image = PIL.Image.open(test_image_path).resize(input_size)
 outputs = heatmap_model.predict({"input": image})
-y_hat = torch.tensor(outputs["4254"])
+output_name=list(outputs.keys())
+assert len(output_name) == 1
+
+y_hat = torch.tensor(outputs[output_name[0]]).squeeze(0)
 
 for i in range(y_hat.shape[0]):
     manual_decoded_keypoints.append((y_hat[i]==torch.max(y_hat[i])).nonzero()[0].tolist()[::-1])
@@ -107,10 +110,12 @@ def add_output(builder, name):
     out.type.multiArrayType.MergeFromString(b"")
     out.type.multiArrayType.dataType = ct.proto.Model_pb2.ArrayFeatureType.DOUBLE
 
-builder.add_reduce_max("x_maxes", input_name="4252", output_name="x_maxes", axes=[2], keepdims=True)
+input_name="4260"
+
+builder.add_reduce_max("x_maxes", input_name=input_name, output_name="x_maxes", axes=[2], keepdims=True)
 builder.add_argmax("x_args", input_name="x_maxes",output_name="x_args", axis=3)
 
-builder.add_reduce_max("y_maxes", input_name="4252", output_name="y_maxes", axes=[3], keepdims=True)
+builder.add_reduce_max("y_maxes", input_name=input_name, output_name="y_maxes", axes=[3], keepdims=True)
 builder.add_argmax("y_args", input_name="y_maxes",output_name="y_args", axis=2)
 
 builder.add_squeeze("ys_abs", input_name="y_args", output_name="ys_abs",squeeze_all=True)
