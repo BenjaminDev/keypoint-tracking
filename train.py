@@ -25,10 +25,37 @@ from matplotlib import cm
 import numpy as np
 from data_loader import KeypointsDataModule
 from utils import Keypoints, draw_keypoints
+import math
+def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5, reduction="mean"):
+    """
+    https://arxiv.org/pdf/1711.06753.pdf
+    :param output:
+    :param target:
+    :param width:
+    :param curvature:
+    :param reduction:
+    :return:
+    """
+    diff_abs = (target - output).abs()
+    loss = diff_abs.clone()
 
+    idx_smaller = diff_abs < width
+    idx_bigger = diff_abs >= width
 
-criterion = nn.MSELoss(reduction="sum")
+    loss[idx_smaller] = width * torch.log(1 + diff_abs[idx_smaller] / curvature)
 
+    C = width - width * math.log(1 + width / curvature)
+    loss[idx_bigger] = loss[idx_bigger] - C
+
+    if reduction == "sum":
+        loss = loss.sum()
+
+    if reduction == "mean":
+        loss = loss.mean()
+
+    return loss
+# criterion = nn.MSELoss(reduction="sum")
+criterion = wing_loss
 
 class Keypointdetector(pl.LightningModule):
     def __init__(
@@ -98,7 +125,7 @@ class Keypointdetector(pl.LightningModule):
         )
         x = torch.cat([x[0], x1, x2, x3], 1)
         if self.inferencing:
-            preds = self.head(x).squeeze(0)
+            preds = self.head(x)
             return preds
         return self.head(x)
 
