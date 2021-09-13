@@ -62,6 +62,44 @@ def generate_target(img, pt, sigma,  label_type='Gaussian'):
     img[img_y[0]:img_y[1], img_x[0]:img_x[1]] = g[g_y[0]:g_y[1], g_x[0]:g_x[1]]
     return img
 
+class HeatmapGenerator():
+    def __init__(self, output_res, num_joints, sigma=-1):
+        self.output_res = output_res
+        self.num_joints = num_joints
+        if sigma < 0:
+            sigma = self.output_res/64
+        self.sigma = sigma
+        size = 6*sigma + 3
+        x = np.arange(0, size, 1, float)
+        y = x[:, np.newaxis]
+        x0, y0 = 3*sigma + 1, 3*sigma + 1
+        self.g = np.exp(- ((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
+
+    def __call__(self, joints):
+        hms = np.zeros((self.num_joints, self.output_res, self.output_res),
+                       dtype=np.float32)
+        sigma = self.sigma
+        for p in joints:
+            for idx, pt in enumerate(p):
+                if pt[2] > 0:
+                    x, y = int(pt[0]), int(pt[1])
+                    if x < 0 or y < 0 or \
+                       x >= self.output_res or y >= self.output_res:
+                        continue
+
+                    ul = int(np.round(x - 3 * sigma - 1)), int(np.round(y - 3 * sigma - 1))
+                    br = int(np.round(x + 3 * sigma + 2)), int(np.round(y + 3 * sigma + 2))
+
+                    c, d = max(0, -ul[0]), min(br[0], self.output_res) - ul[0]
+                    a, b = max(0, -ul[1]), min(br[1], self.output_res) - ul[1]
+
+                    cc, dd = max(0, ul[0]), min(br[0], self.output_res)
+                    aa, bb = max(0, ul[1]), min(br[1], self.output_res)
+                    hms[idx, aa:bb, cc:dd] = np.maximum(
+                        hms[idx, aa:bb, cc:dd], self.g[a:b, c:d])
+        return hms
+
+
 class KeypointsDataset(Dataset):
     def __init__(self, data_path: Path, target_scale: float = 100.0, sigma:float = 3, train=True, transform=None):
         super().__init__()
@@ -70,6 +108,7 @@ class KeypointsDataset(Dataset):
         self.label_files = sorted(list(self.data_path.glob("*.json")))
         self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
+        self.heatmapper=HeatmapGenerator(480,12)
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
@@ -108,13 +147,18 @@ class KeypointsDataset(Dataset):
 
             nparts = len(metadata.keypoint_labels)
             target = np.zeros((nparts, w, h))
+            xs_ys = []
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
-                try:
-                    target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
-                except Exception as e:
-                    breakpoint()
-            target = torch.tensor(target, dtype=torch.float)*self.target_scale
+                xs_ys.append([pt_x,pt_y, 1])
+            target = self.heatmapper([xs_ys])
+
+                # try:
+                #     # target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
+                # except Exception as e:
+                #     # breakpoint()
+                #     pass
+            target = torch.tensor(target, dtype=torch.float) #*self.target_scale
 
         if len(numeric_labels) != len(keypoints):
             raise ValueError("Data is broken. missing labels")
@@ -193,7 +237,7 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    data_dirs=["/mnt/vol_b/training_data/clean/0004-bare-feet/source/v001"]
+    data_dirs=["/Volumes/external/wf/data/0004-bare-feet/source/v001"]
     input_size=(480, 480)
     dm = KeypointsDataModule(data_dirs, input_size)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))

@@ -11,6 +11,7 @@ import torch
 
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 import wandb
+from losses import Loss_weighted
 from kornia.losses.focal import FocalLoss
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import callbacks
@@ -55,7 +56,7 @@ def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5
 
     return loss
 # criterion = nn.MSELoss(reduction="sum")
-criterion = wing_loss
+criterion = Loss_weighted()
 
 class Keypointdetector(pl.LightningModule):
     def __init__(
