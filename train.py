@@ -179,6 +179,7 @@ class Keypointdetector(pl.LightningModule):
         STD = 255 * torch.tensor([0.229, 0.224, 0.225]).cuda()
         pred_images, truth_images, captions = [], [], []
         heatmaps = []
+        truth_maps = []
         wandb.log(
             {
                 f"val_loss_hist": wandb.Histogram(
@@ -211,6 +212,7 @@ class Keypointdetector(pl.LightningModule):
                 heatmaps.append(
                     Image.fromarray(np.uint8(cm.viridis(y_hat.max(axis=0)[0].cpu().numpy()) * 255))
                 )
+                truth_maps.append(Image.fromarray(np.uint8(cm.viridis(target.max(axis=0)[0].cpu().numpy()) * 255)))
 
                 res_val = draw_keypoints(
                     image,
@@ -251,6 +253,7 @@ class Keypointdetector(pl.LightningModule):
                     wandb.Image(o, caption=c) for o, c in zip(truth_images, captions)
                 ],
                 f"Heatmaps": [wandb.Image(o) for o in heatmaps],
+                f"TruthMaps": [wandb.Image(o) for o in truth_maps],
             }
         )
 
@@ -276,7 +279,7 @@ def cli_main(cfg: DictConfig):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=400,
+        max_epochs=1000,
         logger=wandb_logger,
         # auto_lr_find=True,
         track_grad_norm=2,
@@ -284,7 +287,7 @@ def cli_main(cfg: DictConfig):
         stochastic_weight_avg=True,
         gradient_clip_val=0.5,
         accumulate_grad_batches=3,
-        resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
+        resume_from_checkpoint="/mnt/vol_c/models/wf/cnrmwo23/checkpoints/epoch=510-step=88167.ckpt"
     )
     trainer.tune(
         model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size)

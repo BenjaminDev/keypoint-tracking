@@ -63,7 +63,7 @@ def generate_target(img, pt, sigma,  label_type='Gaussian'):
     return img
 
 class KeypointsDataset(Dataset):
-    def __init__(self, data_path: Path, target_scale: float = 100.0, sigma:float = 3, train=True, transform=None):
+    def __init__(self, data_path: Path, target_scale: float = 800.0, sigma:float = 3, train=True, transform=None):
         super().__init__()
         self.data_path = Path(data_path)
         self.image_files = sorted(list(self.data_path.glob("*.png")))
@@ -100,7 +100,7 @@ class KeypointsDataset(Dataset):
                 2, 0, 1
             )
             _, h, w = image.shape  # (C x H x W)
-            self.sigma=float(h)/100.0 # TODO: See how to change this and ideally make it smaller as the model trains. self.trainer.current_epoch should be it!
+            self.sigma=float(h)/500.0 # TODO: See how to change this and ideally make it smaller as the model trains. self.trainer.current_epoch should be it!
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
             keypoints = torch.tensor(keypoints).type(torch.float)
             numeric_labels = torch.tensor(trasformed["labels"]).type(torch.int64)
@@ -199,8 +199,8 @@ if __name__ == "__main__":
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
     dl = dm.train_dataloader()
-    for o, _ in dl:
-        pass
+    # for o, _ in dl:
+    #     pass
 
     breakpoint()
     sample, target = dl.dataset.datasets[0].plot_sample(0)
