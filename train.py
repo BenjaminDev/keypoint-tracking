@@ -56,6 +56,7 @@ def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5
 
     return loss
 # criterion = nn.MSELoss(reduction="sum")
+# criterion = wing_loss
 criterion = Loss_weighted()
 
 class Keypointdetector(pl.LightningModule):
@@ -131,14 +132,14 @@ class Keypointdetector(pl.LightningModule):
         return self.head(x)
 
     def training_step(self, batch, batch_idx):
-        x, (targets, keypoints, visible, labels, captions) = batch
+        x, (targets, M, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
         loss = criterion(y_hat, targets)
         return loss
 
     def validation_step(self, batch, batch_idx):
 
-        x, (targets, keypoints, visible, labels, captions) = batch
+        x, (targets, M, keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
         y_hat = self(x)
         #
@@ -149,15 +150,15 @@ class Keypointdetector(pl.LightningModule):
             raise ValueError("Data is broken. missing labels")
         self.valdation_count += 1
         if self.valdation_count % 10 == 0:
-            return (x, y_hat, targets, visible, labels, captions, loss)
+            return (x, y_hat, targets, M, visible, labels, captions, loss)
 
     def test_step(self, batch, batch_idx):
-        x, (targets, keypoints, visible, labels, captions) = batch
+        x, (targets, M, keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
 
         y_hat = self(x)
 
-        loss = criterion(y_hat, targets)
+        loss = criterion(y_hat, targets, M)
         # loss = loss*visible
         self.log("test_loss", loss)
 
@@ -176,8 +177,8 @@ class Keypointdetector(pl.LightningModule):
             outputs (Dict[str, Any]): Dict of values collected over each batch put through model.eval()(..)
         """
         # FIXME: don't call cuda here do .to(device)
-        MEAN = 255 * torch.tensor([0.485, 0.456, 0.406]).cuda()
-        STD = 255 * torch.tensor([0.229, 0.224, 0.225]).cuda()
+        MEAN = 255 * torch.tensor([0.485, 0.456, 0.406]) #.cuda()
+        STD = 255 * torch.tensor([0.229, 0.224, 0.225]) #.cuda()
         pred_images, truth_images, captions = [], [], []
         heatmaps = []
         wandb.log(
@@ -191,13 +192,14 @@ class Keypointdetector(pl.LightningModule):
             #
             # if len(outputs) != 5:
             #
-            for image, y_hat, target, visible, labels, caption in zip(
+            for image, y_hat, target, M, visible, labels, caption in zip(
                 batch_of_outputs[0],
                 batch_of_outputs[1],
                 batch_of_outputs[2],
                 batch_of_outputs[3],
                 batch_of_outputs[4],
                 batch_of_outputs[5],
+                batch_of_outputs[6],
             ):
 
                 image = image * STD[:, None, None] + MEAN[:, None, None]
@@ -276,16 +278,16 @@ def cli_main(cfg: DictConfig):
     print(data_dirs)
 
     trainer = pl.Trainer(
-        gpus=1,
+        gpus=0,
         max_epochs=400,
         logger=wandb_logger,
         # auto_lr_find=True,
         track_grad_norm=2,
-        precision=16,
+        # precision=16,
         stochastic_weight_avg=True,
         gradient_clip_val=0.5,
         accumulate_grad_batches=3,
-        resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
+        # resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
     )
     trainer.tune(
         model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size)
