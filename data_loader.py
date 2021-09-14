@@ -2,7 +2,7 @@ import os
 import warnings
 from pathlib import Path
 from typing import List, Tuple
-
+from scipy.ndimage.morphology import grey_dilation
 import cv2
 import numpy as np
 import PIL
@@ -97,7 +97,13 @@ class HeatmapGenerator():
                     aa, bb = max(0, ul[1]), min(br[1], self.output_res)
                     hms[idx, aa:bb, cc:dd] = np.maximum(
                         hms[idx, aa:bb, cc:dd], self.g[a:b, c:d])
-        return hms
+        M = np.zeros_like(hms)
+        # mask = np.clip(hms.max().astype(np.int),0,63)
+        for i in range(len(M)):
+            M[i] = grey_dilation(hms[i], size=(3,3))
+        # breakpoint()
+        M = np.where(M>=0.5, 1, 0)
+        return hms, M
 
 
 class KeypointsDataset(Dataset):
@@ -151,7 +157,7 @@ class KeypointsDataset(Dataset):
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
                 xs_ys.append([pt_x,pt_y, 1])
-            target = self.heatmapper([xs_ys])
+            target, M = self.heatmapper([xs_ys])
 
                 # try:
                 #     # target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
@@ -159,13 +165,14 @@ class KeypointsDataset(Dataset):
                 #     # breakpoint()
                 #     pass
             target = torch.tensor(target, dtype=torch.float) #*self.target_scale
+            M = torch.tensor(M, dtype=torch.float)
 
         if len(numeric_labels) != len(keypoints):
             raise ValueError("Data is broken. missing labels")
-        return image, (target,keypoints.view(keypoints.size(0), -1), visible, numeric_labels, self.image_files[index].stem)
+        return image, (target, M, keypoints.view(keypoints.size(0), -1), visible, numeric_labels, self.image_files[index].stem)
 
     def plot_sample(self, index, show_all=True, denormalize=True):
-        image, (target, keypoints, visible, numeric_labels, source_filename) = self[index]
+        image, (target, M, keypoints, visible, numeric_labels, source_filename) = self[index]
         label_names = [Keypoints._fields[o-1] for o in numeric_labels]
         if not image.shape[0] in {1, 3}:
             warnings.WarningMessage(
@@ -181,7 +188,7 @@ class KeypointsDataset(Dataset):
         keypoints = []
         for i in range(target.shape[0]):
                 keypoints.append((target[i]==torch.max(target[i])).nonzero()[0].tolist()[::-1])
-        return draw_keypoints(image, keypoints, label_names, show_labels=True, short_names=True, visible=visible, show_all=show_all), target
+        return draw_keypoints(image, keypoints, label_names, show_labels=True, short_names=True, visible=visible, show_all=show_all), target, M
 
 
 class KeypointsDataModule(pl.LightningDataModule):
@@ -247,16 +254,19 @@ if __name__ == "__main__":
     #     pass
 
     breakpoint()
-    sample, target = dl.dataset.datasets[0].plot_sample(0)
+    sample, target, M = dl.dataset.datasets[0].plot_sample(0)
     sample.save("/tmp/tmp2.png")
     breakpoint()
     target = target*255
+    M=M*255
     for i in range(target.shape[0]):
         kp = (target[i]==torch.max(target[i])).nonzero()[0]
 
     # target = target.permute(2, 0, 1)
     for i in range(target.shape[0]):
         PIL.Image.fromarray(target[i].numpy().astype('uint8')).convert("RGB").save(f"/tmp/{i}_target.png")
+    for i in range(M.shape[0]):
+        PIL.Image.fromarray(M[i].numpy().astype('uint8')).convert("L").save(f"/tmp/{i}_M.png")
     # t.save("mask.png")
     v, _ = torch.max(target,0)
 

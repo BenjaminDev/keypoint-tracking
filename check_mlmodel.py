@@ -1,13 +1,18 @@
+from datetime import time
 import coremltools as ct
 from pathlib import Path
 from coremltools import models
 from tqdm import tqdm
 from utils import draw_keypoints, Keypoints, image_to_tensor
 import PIL
+from torch import nn
 import torch
+from PIL import Image
 import os
 from torchvision.utils import draw_bounding_boxes
 import argparse
+from matplotlib import cm
+import numpy as np
 from pathlib import Path
 from random import sample
 import shutil
@@ -31,7 +36,7 @@ if __name__ == "__main__":
         "--mtype",
         dest="model_type",
         type=str,
-        choices=("yolov5", "heatmap"),
+        choices=("yolov5", "heatmap", "heatmap-only", "ref"),
         help="type of model - todo: infer from outputs",
     )
 
@@ -42,6 +47,8 @@ if __name__ == "__main__":
     model = ct.models.MLModel(spec)
 
     image_files = list(args.data_dir.glob("*.png"))
+
+
     if args.model_type == "heatmap":
         label_names = [Keypoints._fields[o-1] for o in range(12)]
         i=0
@@ -53,6 +60,44 @@ if __name__ == "__main__":
             kps=outputs["coordinates"]
             annotated_image = draw_keypoints(image, kps, labels=label_names, show_labels=True, show_all=True)
             annotated_image.save(f"/Volumes/external/wf/data/ARSession/out/{i}_tmp.png")
+    elif args.model_type == "heatmap-only":
+        label_names = [Keypoints._fields[o-1] for o in range(12)]
+        i=0
+        for fn in tqdm(image_files):
+            i+=1
+            # breakpoint()
+            image = PIL.Image.open(fn).resize((480, 480))
+            heatmaps = model.predict({"input" : image})["4260"]
+            m = nn.Sigmoid()
+            with torch.no_grad():
+                heatmaps = m(torch.tensor(heatmaps)).numpy()
+            heatmap = Image.fromarray(np.uint8(cm.viridis(heatmaps.max(axis=0)[0]) * 255))
+            # breakpoint()
+            # kps=outputs["coordinates"]
+            # annotated_image = draw_keypoints(image, kps, labels=label_names, show_labels=True, show_all=True)
+            heatmap.save(f"/Volumes/external/wf/data/ARSession/out/{i}_tmp_heat.png")
+            # annotated_image.save(f"/Volumes/external/wf/data/ARSession/out/{i}_tmp.png")
+    elif args.model_type == "ref":
+        label_names = [Keypoints._fields[o-1] for o in range(12)]
+        i=0
+        for fn in tqdm(image_files):
+            i+=1
+            # breakpoint()
+            image = PIL.Image.open(fn).resize((160, 160))
+            y_hat = model.predict({"input0:0" : image})["output0"]
+            # breakpoint()
+            y_hat=torch.tensor(y_hat).squeeze(0).permute(2,1,0)
+            m = nn.Sigmoid()
+            with torch.no_grad():
+                heatmaps = m(y_hat)
+            heatmap = Image.fromarray(np.uint8(cm.viridis(y_hat[:12].max(axis=0)[0]) * 255))
+            heatmap.save(f"/Volumes/external/wf/data/ARSession/out/{i}_tmp_heat_ref.png")
+            manual_decoded_keypoints=[]
+            for j in range(12): #range(y_hat.shape[0]):
+                manual_decoded_keypoints.append((y_hat[j]==torch.max(y_hat[j])).nonzero()[0].tolist())
+            annotated_image = draw_keypoints(image, manual_decoded_keypoints, labels=label_names, show_labels=False, show_all=True)
+            annotated_image.save(f"/Volumes/external/wf/data/ARSession/out_ref/{i}_tmp.png")
+
     elif args.model_type == "yolov5":
 
         for i, fn in tqdm(enumerate(image_files)):

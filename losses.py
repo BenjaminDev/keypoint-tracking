@@ -27,10 +27,10 @@ class Loss_weighted(nn.Module):
         self.W = float(W)
         self.Awing = AWing(alpha, omega, epsilon, theta)
 
-    def forward(self, y_pred , y, M=None):
-        # M = M.float()
+    def forward(self, y_pred , y, M):
+        M = M.float()
         Loss = self.Awing(y_pred,y)
-        weighted = Loss  #* (self.W * M + 1.)
+        weighted = Loss * (self.W * M + 1.)
         return weighted.mean()
 
 if __name__=="__main__":
