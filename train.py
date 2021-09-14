@@ -253,8 +253,8 @@ class Keypointdetector(pl.LightningModule):
                 f"Truth Keypoints": [
                     wandb.Image(o, caption=c) for o, c in zip(truth_images, captions)
                 ],
-                f"Heatmaps": [wandb.Image(o) for o in heatmaps],
-                f"TruthMaps": [wandb.Image(o) for o in truth_maps],
+                f"Heatmaps": [wandb.Image(o, caption=c) for o, c in zip(heatmaps, captions)],
+                f"TruthMaps": [wandb.Image(o, caption=c) for o, c in zip(truth_maps, captions)],
             }
         )
 
