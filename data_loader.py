@@ -5,9 +5,13 @@ from typing import List, Tuple
 from scipy.ndimage.morphology import grey_dilation
 import cv2
 import numpy as np
+from scipy import ndimage
+import coremltools as ct
 import PIL
+import scipy.misc
 import pytorch_lightning as pl
 import torch
+from torch._C import dtype
 import torch.nn.functional as F
 from albumentations.augmentations.geometric.functional import keypoint_affine
 from albumentations.pytorch import ToTensorV2
@@ -106,6 +110,61 @@ class HeatmapGenerator():
         return hms, M
 
 
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+def resize_by_grid_sample(x):
+
+    dx = torch.linspace(-1, 1, 12)
+    dy = torch.linspace(-1, 1, 480)
+    dz = torch.linspace(-1, 1, 480)
+    meshx, meshy, meshz = torch.meshgrid((dx, dy, dz))
+    grid = torch.stack((meshx, meshy, meshz), 3)
+    grid = grid.unsqueeze(0)
+
+    x = x[np.newaxis, np.newaxis, :, :, :]
+    x = torch.tensor(x, requires_grad=False, dtype=torch.float)
+
+    out = F.grid_sample(x, grid, align_corners=True)
+    out = out.data.numpy()
+    out = np.squeeze(out)
+
+    return out
+class ModelLabeller():
+    def __init__(self, output_res:int, num_joints:int, model_path:Path) -> None:
+        self.output_res = output_res
+        self.num_joints = num_joints
+        spec = ct.utils.load_spec(os.fsdecode(model_path))
+        self.model = ct.models.MLModel(spec)
+
+    def __call__(self, image_path):
+        image = PIL.Image.open(image_path).resize((160, 160))
+        # image.save("/tmp/input.png")
+        y_hat = self.model.predict({"input0:0" : image})["output0"]
+        y_hat = y_hat.transpose(3,1,2,0).squeeze(-1)*255
+        y_hat= np.concatenate([y_hat[:6,...], y_hat[7:13,...]]) # using only 6 points per foot
+        # breakpoint()
+        hms = np.zeros((12,480,480), dtype=float)
+        for i, hm in enumerate(y_hat):
+            img=PIL.Image.fromarray(hm).convert("L").resize((480,480))
+            # img.save(f"/tmp/check_{i}.png")
+            hms[i] = np.array(img)
+        # hms = resize_by_grid_sample(y_hat)
+        # PIL.Image.fromarray(hms[0,...]*255).convert("L").save("/tmp/hmmcheck.png")
+        # hms = ndimage.zoom(y_hat,(1.0,3.0,3.0))
+        # y_hat=torch.tensor(y_hat).squeeze(0).permute(2,1,0)
+        # breakpoint()
+        # hms = np.array(PIL.Image.fromarray(y_hat).resize((self.output_res,self.output_res)))
+        M = np.zeros_like(hms)
+        for i in range(len(M)):
+            M[i] = grey_dilation(hms[i], size=(3,3))
+        # breakpoint()
+        M = np.where(M>=0.5, 1, 0)
+        return hms, M
+
+
+
 class KeypointsDataset(Dataset):
     def __init__(self, data_path: Path, target_scale: float = 800.0, sigma:float = 3, train=True, transform=None):
         super().__init__()
@@ -114,7 +173,8 @@ class KeypointsDataset(Dataset):
         self.label_files = sorted(list(self.data_path.glob("*.json")))
         self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
-        self.heatmapper=HeatmapGenerator(480,12)
+        # self.heatmapper=HeatmapGenerator(480,12)
+        self.heatmapper=ModelLabeller(480,14,model_path=Path("/Users/benjamin/projects/keypoint-tracking/outputs/reference/model3.mlmodel"))
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
@@ -157,7 +217,8 @@ class KeypointsDataset(Dataset):
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
                 xs_ys.append([pt_x,pt_y, 1])
-            target, M = self.heatmapper([xs_ys])
+            # target, M = self.heatmapper([xs_ys])
+            target, M = self.heatmapper(self.image_files[index])
 
                 # try:
                 #     # target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
