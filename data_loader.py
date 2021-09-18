@@ -23,6 +23,8 @@ from torchvision import transforms, utils
 from torchvision.datasets import CIFAR10, MNIST
 
 from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta
+import onnx
+import onnxruntime as ort
 
 AVAIL_GPUS = min(1, torch.cuda.device_count())
 BATCH_SIZE = 4 if AVAIL_GPUS else 4
@@ -135,15 +137,32 @@ class ModelLabeller():
     def __init__(self, output_res:int, num_joints:int, model_path:Path) -> None:
         self.output_res = output_res
         self.num_joints = num_joints
-        spec = ct.utils.load_spec(os.fsdecode(model_path))
-        self.model = ct.models.MLModel(spec)
+        # spec = ct.utils.load_spec(os.fsdecode(model_path))
+        # self.model = ct.models.MLModel(spec)
+        # Load the ONNX model
+        # self.model = onnx.load("/mnt/vol_c/code/sketchpad/coreml_models/reference/model.onnx")
+
+        self.ort_session = ort.InferenceSession("/mnt/vol_c/code/sketchpad/coreml_models/reference/model.onnx")
+
+# img=Image.fromarray(np.random.randn(160, 160,3).astype("uint8"))
+
 
     def __call__(self, image_path):
         image = PIL.Image.open(image_path).resize((160, 160))
         # image.save("/tmp/input.png")
-        y_hat = self.model.predict({"input0:0" : image})["output0"]
-        y_hat = y_hat.transpose(3,1,2,0).squeeze(-1)*255
+        # y_hat = self.model.predict({"input0:0" : image})["output0"]
+        img=np.array(image).astype(np.float32)#.transpose(0,3,1,2)
+        # np.expand_dims(np.array(image).astype(np.float32).transpose(1,2,0),-1)
+        breakpoint()
+        MEAN = 255*torch.tensor([0.485, 0.456, 0.406])
+        STD = 255*torch.tensor([0.229, 0.224, 0.225])
+        img =np.array(torch.tensor(img.transpose(2,1,0)) * STD[:, None, None] + MEAN[:, None, None])
+        img = np.expand_dims(img, 0).transpose(0,2,3,1)
+        y_hat = self.ort_session.run(None, {'input0:0':img })[1] #np.random.randn(10,  160, 160,3).astype(np.float32)})
+        y_hat = y_hat.transpose(3,1,2,0).squeeze(-1)
+        # y_hat = np.array(torch.sigmoid(torch.tensor(y_hat)/y_hat.max()))*255
         y_hat= np.concatenate([y_hat[:6,...], y_hat[7:13,...]]) # using only 6 points per foot
+        breakpoint()
         # breakpoint()
         hms = np.zeros((12,480,480), dtype=float)
         for i, hm in enumerate(y_hat):
@@ -173,8 +192,8 @@ class KeypointsDataset(Dataset):
         self.label_files = sorted(list(self.data_path.glob("*.json")))
         self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
-        # self.heatmapper=HeatmapGenerator(480,12)
-        self.heatmapper=ModelLabeller(480,14,model_path=Path("/Users/benjamin/projects/keypoint-tracking/outputs/reference/model3.mlmodel"))
+        self.heatmapper=HeatmapGenerator(480,12)
+        # self.heatmapper=ModelLabeller(480,14,model_path=Path("/mnt/vol_c/code/sketchpad/coreml_models/reference/model3.mlmodel"))
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
@@ -217,8 +236,10 @@ class KeypointsDataset(Dataset):
             for i in range(nparts):
                 pt_x, pt_y = keypoints[i][0]*w,  keypoints[i][1]*h
                 xs_ys.append([pt_x,pt_y, 1])
-            # target, M = self.heatmapper([xs_ys])
-            target, M = self.heatmapper(self.image_files[index])
+            if isinstance(self.heatmapper, ModelLabeller):
+                target, M = self.heatmapper(self.image_files[index])
+            else:
+                target, M = self.heatmapper([xs_ys])
 
                 # try:
                 #     # target[i] = generate_target(target[i], (pt_x, pt_y), sigma=self.sigma)
@@ -305,7 +326,7 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    data_dirs=["/Volumes/external/wf/data/0004-bare-feet/source/v001"]
+    data_dirs=["/mnt/vol_b/training_data/clean/0004-bare-feet/source/v001"]
     input_size=(480, 480)
     dm = KeypointsDataModule(data_dirs, input_size)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))

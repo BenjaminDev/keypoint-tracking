@@ -134,7 +134,7 @@ class Keypointdetector(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, (targets, M, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
-        loss = criterion(y_hat, targets)
+        loss = criterion(y_hat, targets, M)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -144,7 +144,7 @@ class Keypointdetector(pl.LightningModule):
         y_hat = self(x)
         #
 
-        loss = criterion(y_hat, targets)
+        loss = criterion(y_hat, targets, M)
         self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0]) // 2):
             raise ValueError("Data is broken. missing labels")
@@ -177,8 +177,8 @@ class Keypointdetector(pl.LightningModule):
             outputs (Dict[str, Any]): Dict of values collected over each batch put through model.eval()(..)
         """
         # FIXME: don't call cuda here do .to(device)
-        MEAN = 255 * torch.tensor([0.485, 0.456, 0.406]) #.cuda()
-        STD = 255 * torch.tensor([0.229, 0.224, 0.225]) #.cuda()
+        MEAN = 255 * torch.tensor([0.485, 0.456, 0.406]).cuda()
+        STD = 255 * torch.tensor([0.229, 0.224, 0.225]).cuda()
         pred_images, truth_images, captions = [], [], []
         heatmaps = []
         truth_maps = []
