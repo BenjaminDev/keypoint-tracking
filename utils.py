@@ -3,7 +3,7 @@ from collections import defaultdict, namedtuple
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
-import Imath
+# import Imath
 import numpy as np
 import OpenEXR
 import PIL
@@ -19,7 +19,8 @@ from torchvision import utils
 from torchvision.transforms import ToTensor
 
 image_to_tensor = T.Compose([T.ToTensor(), T.ConvertImageDtype(torch.uint8)])
-FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
+# FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
+FLOAT =float
 
 COLORS = {
     "left_shoe_front": "#F40001",

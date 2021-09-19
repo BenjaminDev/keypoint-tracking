@@ -2,8 +2,10 @@ import os
 import warnings
 from pathlib import Path
 from typing import List, Tuple
+from albumentations.augmentations.geometric.rotate import Rotate
 from scipy.ndimage.morphology import grey_dilation
 import cv2
+from tqdm import tqdm
 import numpy as np
 from scipy import ndimage
 import coremltools as ct
@@ -11,6 +13,7 @@ import PIL
 import scipy.misc
 import pytorch_lightning as pl
 import torch
+from random import randint, random
 from torch._C import dtype
 import torch.nn.functional as F
 from albumentations.augmentations.geometric.functional import keypoint_affine
@@ -116,23 +119,23 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-def resize_by_grid_sample(x):
+# def resize_by_grid_sample(x):
 
-    dx = torch.linspace(-1, 1, 12)
-    dy = torch.linspace(-1, 1, 480)
-    dz = torch.linspace(-1, 1, 480)
-    meshx, meshy, meshz = torch.meshgrid((dx, dy, dz))
-    grid = torch.stack((meshx, meshy, meshz), 3)
-    grid = grid.unsqueeze(0)
+#     dx = torch.linspace(-1, 1, 12)
+#     dy = torch.linspace(-1, 1, 480)
+#     dz = torch.linspace(-1, 1, 480)
+#     meshx, meshy, meshz = torch.meshgrid((dx, dy, dz))
+#     grid = torch.stack((meshx, meshy, meshz), 3)
+#     grid = grid.unsqueeze(0)
 
-    x = x[np.newaxis, np.newaxis, :, :, :]
-    x = torch.tensor(x, requires_grad=False, dtype=torch.float)
+#     x = x[np.newaxis, np.newaxis, :, :, :]
+#     x = torch.tensor(x, requires_grad=False, dtype=torch.float)
 
-    out = F.grid_sample(x, grid, align_corners=True)
-    out = out.data.numpy()
-    out = np.squeeze(out)
+#     out = F.grid_sample(x, grid, align_corners=True)
+#     out = out.data.numpy()
+#     out = np.squeeze(out)
 
-    return out
+#     return out
 class ModelLabeller():
     def __init__(self, output_res:int, num_joints:int, model_path:Path) -> None:
         self.output_res = output_res
@@ -185,15 +188,27 @@ class ModelLabeller():
 
 
 class KeypointsDataset(Dataset):
-    def __init__(self, data_path: Path, target_scale: float = 800.0, sigma:float = 3, train=True, transform=None):
+    def __init__(self, data_path: Path, image_size:Tuple[int,int], target_scale: float = 800.0, sigma:float = 3, train=True, transform=None):
         super().__init__()
         self.data_path = Path(data_path)
         self.image_files = sorted(list(self.data_path.glob("*.png")))
         self.label_files = sorted(list(self.data_path.glob("*.json")))
         self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
-        self.heatmapper=HeatmapGenerator(480,12)
+        self.custom_transforms = True
+        assert image_size[0] == image_size[1], "Only square images are supported!"
+        self.image_size = image_size
+        self.heatmapper=HeatmapGenerator(image_size[0],12)
         # self.heatmapper=ModelLabeller(480,14,model_path=Path("/mnt/vol_c/code/sketchpad/coreml_models/reference/model3.mlmodel"))
+        cancel=False
+        for im_file in tqdm(self.image_files):
+            # Hack to check for broken images
+            image = cv2.imread(os.fsdecode(im_file))
+            if image is None:
+                cancel=True
+                print (f"BROKEN FILE: {os.fsdecode(im_file)}")
+        if cancel:
+            raise AssertionError("Broken files")
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
@@ -205,19 +220,42 @@ class KeypointsDataset(Dataset):
         self.category_names = Keypoints._fields
         self.transform = transform
         self.train = train
+    def crop_keep_points(self, image, keypoints):
+        h, w,_ = image.shape
+        total_border = randint(10,max(w,h))
+        x_ratio = random()
+        y_ratio = random()
+        # breakpoint()
+        x_max = min(max(keypoints,key=lambda kp:kp[0])[0] + int(total_border*x_ratio), w)
+        x_min = max(min(keypoints,key=lambda kp:kp[0])[0] - int(total_border*(1-x_ratio)), 0)
+        y_max = min(max(keypoints,key=lambda kp:kp[1])[1] + int(total_border*y_ratio), h)
+        y_min = max(min(keypoints,key=lambda kp:kp[1])[1] - int(total_border*(1-y_ratio)),0)
+        keypoints = [(max(0,o[0]-x_min-1), max(0,o[1]-y_min-1)) for o in keypoints]
+        return image[y_min:y_max, x_min:x_max, :], keypoints
 
     def __len__(self):
         return len(self.label_files)
 
     def __getitem__(self, index):
         if self.train:
-            image = cv2.imread(os.fsdecode(self.image_files[index]))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            try:
+                image = cv2.imread(os.fsdecode(self.image_files[index]))
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            except:
+                print(f"BROKEN FILE: {self.image_files[index]}")
+                return self[index+1]
             metadata = read_meta(self.label_files[index])
             keypoints = metadata.keypoints
+            # h, w, _ = image.shape  # (H x W xC)
+            # if self.image_size[0]  != h:
+            #     keypoints = [(int((x / w)*self.image_size[0]), int((y / h)*self.image_size[1])) for x, y in keypoints]
+            #     image = cv2.resize(image, self.image_size, interpolation = cv2.INTER_AREA)
             visible = torch.tensor(metadata.visible, dtype=torch.float)
             labels = metadata.keypoint_labels
             numeric_labels = [Keypoints._fields_defaults[o] for o in metadata.keypoint_labels]
+
+        if self.custom_transforms:
+            image, keypoints = self.crop_keep_points(image, keypoints)
         if self.transform:
             trasformed = self.transform(image=image,keypoints=keypoints, labels=numeric_labels, visible=visible)
             image = torch.tensor(trasformed["image"], dtype=torch.float32).permute(
@@ -274,11 +312,15 @@ class KeypointsDataset(Dataset):
 
 
 class KeypointsDataModule(pl.LightningDataModule):
-    def __init__(self, data_dirs: List[str], input_size:Tuple[int,int]):
+    def __init__(self, data_dirs: List[str], input_size:Tuple[int,int], batch_size:int):
         super().__init__()
         self.data_dirs = data_dirs
+        self.input_size=input_size
+        self.batch_size = batch_size
         self.train_transforms = A.Compose(
             [
+                # A.RandomCrop(*input_size),
+                # A.Rotate(limit=45,p=0.2,),
                 A.Resize(*input_size),
                 A.ColorJitter(),
                 A.RandomBrightnessContrast(),
@@ -301,34 +343,34 @@ class KeypointsDataModule(pl.LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
             self.keypoints_train = ConcatDataset([KeypointsDataset(
-                data_dir, train=True, transform=self.train_transforms
+                data_dir, image_size=self.input_size, train=True, transform=self.train_transforms
             ) for data_dir in self.data_dirs])
             self.keypoints_val = ConcatDataset([KeypointsDataset(
-                data_dir+'/val', train=True, transform=self.train_transforms
+                data_dir+'/val', image_size=self.input_size,train=True, transform=self.train_transforms
             ) for data_dir in self.data_dirs])
             # sample_image, _ = self.keypoints_train[0]
             # self.dims = sample_image.shape
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
             self.keypoints_test = ConcatDataset([KeypointsDataset(
-                data_dir+'/test', train=True, transform=self.test_transforms
+                data_dir+'/test',image_size=self.input_size, train=True, transform=self.test_transforms
             ) for data_dir in self.data_dirs])
 
 
     def train_dataloader(self):
-        return DataLoader(self.keypoints_train, batch_size=BATCH_SIZE, num_workers=os.cpu_count(), shuffle=True)
+        return DataLoader(self.keypoints_train, batch_size=self.batch_size, num_workers=os.cpu_count(), shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.keypoints_val, batch_size=BATCH_SIZE, num_workers=os.cpu_count(),shuffle=True)
+        return DataLoader(self.keypoints_val, batch_size=self.batch_size, num_workers=os.cpu_count(),shuffle=True)
 
     def test_dataloader(self):
-        return DataLoader(self.keypoints_test, batch_size=BATCH_SIZE, num_workers=os.cpu_count(), shuffle=True)
+        return DataLoader(self.keypoints_test, batch_size=self.batch_size, num_workers=os.cpu_count(), shuffle=False)
 
 
 if __name__ == "__main__":
     data_dirs=["/mnt/vol_b/training_data/clean/0004-bare-feet/source/v001"]
-    input_size=(480, 480)
-    dm = KeypointsDataModule(data_dirs, input_size)
+    input_size=(160, 160)
+    dm = KeypointsDataModule(data_dirs, input_size, batch_size=1)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
     dl = dm.train_dataloader()

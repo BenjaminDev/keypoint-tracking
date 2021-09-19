@@ -1,4 +1,5 @@
 import argparse
+from re import S
 from typing import Dict, Tuple
 
 import hydra
@@ -27,6 +28,42 @@ import numpy as np
 from data_loader import KeypointsDataModule
 from utils import Keypoints, draw_keypoints
 import math
+import torch
+from mmpose.models import HRNet
+from mmcv import Config, DictAction
+from mmpose.models import HRNet
+import torch
+from mmcv.utils import build_from_cfg
+from mmpose.apis import train_model
+from torch import nn
+from mmpose.apis import multi_gpu_test, single_gpu_test
+from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+import pytorch_lightning as pl
+from mmpose.models.builder import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
+
+def build(cfg, registry, default_args=None):
+    """Build a module.
+    Args:
+        cfg (dict, list[dict]): The config of modules, it is either a dict
+            or a list of configs.
+        registry (:obj:`Registry`): A registry the module belongs to.
+        default_args (dict, optional): Default arguments to build the module.
+            Defaults to None.
+    Returns:
+        nn.Module: A built nn module.
+    """
+
+    if isinstance(cfg, list):
+        modules = [
+            build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg
+        ]
+        return nn.Sequential(*modules)
+
+    return build_from_cfg(cfg, registry, default_args)
+
+def build_posenet(cfg):
+    """Build posenet."""
+    return build(cfg, POSENETS)
 def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5, reduction="mean"):
     """
     https://arxiv.org/pdf/1711.06753.pdf
@@ -59,84 +96,115 @@ def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5
 # criterion = wing_loss
 criterion = Loss_weighted()
 
+# class Keypointdetector(pl.LightningModule):
+#     def __init__(
+#         self,
+#         config: DictConfig,
+#         output_image_size: Tuple[int, int],
+#         inferencing: bool = False,
+#         num_keypoints: int = 12,
+#         learning_rate: float = 0.0001,
+#     ):
+#         super().__init__()
+#         self.save_hyperparameters()
+#         self.learning_rate = learning_rate
+#         self.inferencing = inferencing
+#         self.features = timm.create_model(
+#             "hrnet_w18_small",
+#             pretrained=True,
+#             features_only=True,
+#             num_classes=0,
+#             global_pool="",
+#         )
+#         self.valdation_count = 0
+#         final_inp_channels = 960
+#         BN_MOMENTUM = 0.01
+#         FINAL_CONV_KERNEL = 1
+#         num_points = 12
+#         self.head = nn.Sequential(
+#             nn.Conv2d(
+#                 in_channels=final_inp_channels,
+#                 out_channels=final_inp_channels,
+#                 kernel_size=1,
+#                 # stride=1,
+#                 dilation=2,
+#                 padding=1,
+#             ),
+#             nn.BatchNorm2d(final_inp_channels, momentum=BN_MOMENTUM),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(
+#                 in_channels=final_inp_channels,
+#                 out_channels=num_points,
+#                 kernel_size=FINAL_CONV_KERNEL,
+#                 dilation=2,
+#                 stride=1,
+#                 padding=1,
+#             ),
+#             # nn.Upsample(size=(output_image_size[0],output_image_size[1] ), mode="bilinear", align_corners=False),
+#             nn.ReLU(inplace=True),
+#             nn.ConvTranspose2d(
+#                 in_channels=num_points, out_channels=num_points, kernel_size=2, stride=1
+#             ),
+#             nn.Upsample(size=(480, 480), mode="bilinear", align_corners=False),
+#         )
+
+#     def forward(self, x):
+
+#         x = self.features(x)
+
+#         height, width = x[0].size(2), x[0].size(3)
+#         x1 = F.interpolate(
+#             x[1], size=(height, width), mode="bilinear", align_corners=False
+#         )
+#         x2 = F.interpolate(
+#             x[2], size=(height, width), mode="bilinear", align_corners=False
+#         )
+#         x3 = F.interpolate(
+#             x[3], size=(height, width), mode="bilinear", align_corners=False
+#         )
+#         x = torch.cat([x[0], x1, x2, x3], 1)
+#         if self.inferencing:
+#             preds = self.head(x)
+#             return preds
+#         return self.head(x)
+
+#     def training_step(self, batch, batch_idx):
+#         x, (targets, M, keypoints, visible, labels, captions) = batch
+#         y_hat = self(x)
+#         loss = criterion(y_hat, targets, M)
+#         return loss
 class Keypointdetector(pl.LightningModule):
-    def __init__(
-        self,
-        config: DictConfig,
-        output_image_size: Tuple[int, int],
+    def __init__(self,   config: DictConfig,
+
         inferencing: bool = False,
         num_keypoints: int = 12,
         learning_rate: float = 0.0001,
-    ):
+        ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["model"])
         self.learning_rate = learning_rate
-        self.inferencing = inferencing
-        self.features = timm.create_model(
-            "hrnet_w18",
-            pretrained=True,
-            features_only=True,
-            num_classes=0,
-            global_pool="",
-        )
         self.valdation_count = 0
-        final_inp_channels = 960
-        BN_MOMENTUM = 0.01
-        FINAL_CONV_KERNEL = 1
-        num_points = 12
-        self.head = nn.Sequential(
-            nn.Conv2d(
-                in_channels=final_inp_channels,
-                out_channels=final_inp_channels,
-                kernel_size=1,
-                # stride=1,
-                dilation=2,
-                padding=1,
-            ),
-            nn.BatchNorm2d(final_inp_channels, momentum=BN_MOMENTUM),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(
-                in_channels=final_inp_channels,
-                out_channels=num_points,
-                kernel_size=FINAL_CONV_KERNEL,
-                dilation=2,
-                stride=1,
-                padding=1,
-            ),
-            # nn.Upsample(size=(output_image_size[0],output_image_size[1] ), mode="bilinear", align_corners=False),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(
-                in_channels=num_points, out_channels=num_points, kernel_size=2, stride=1
-            ),
-            nn.Upsample(size=(480, 480), mode="bilinear", align_corners=False),
-        )
+        self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
+        model = build_posenet(self.cfg.model)
+        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+        self.backbone = [o for o in model.children()][0]
+        self.head = [o for o in model.children()][1]
+        self.upsample=nn.Upsample(size=tuple(config.model.input_size), mode="bilinear", align_corners=False)
+        self.model = nn.Sequential(self.backbone, self.head, self.upsample)
 
     def forward(self, x):
-
-        x = self.features(x)
-
-        height, width = x[0].size(2), x[0].size(3)
-        x1 = F.interpolate(
-            x[1], size=(height, width), mode="bilinear", align_corners=False
-        )
-        x2 = F.interpolate(
-            x[2], size=(height, width), mode="bilinear", align_corners=False
-        )
-        x3 = F.interpolate(
-            x[3], size=(height, width), mode="bilinear", align_corners=False
-        )
-        x = torch.cat([x[0], x1, x2, x3], 1)
-        if self.inferencing:
-            preds = self.head(x)
-            return preds
-        return self.head(x)
-
+        # use forward for inference/predictions
+        # features = self.backbone(x)
+        # output_heatmap = self.head(features)
+        # output_heatmap = self.upsample(output_heatmap)
+        output_heatmap = self.model(x)
+        return output_heatmap
     def training_step(self, batch, batch_idx):
         x, (targets, M, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
         loss = criterion(y_hat, targets, M)
+        # loss = self.head.get_loss(y_hat, targets, M)
         return loss
-
     def validation_step(self, batch, batch_idx):
 
         x, (targets, M, keypoints, visible, labels, captions) = batch
@@ -145,6 +213,7 @@ class Keypointdetector(pl.LightningModule):
         #
 
         loss = criterion(y_hat, targets, M)
+        # loss = self.head.get_loss(y_hat, targets, M)
         self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0]) // 2):
             raise ValueError("Data is broken. missing labels")
@@ -273,8 +342,8 @@ def cli_main(cfg: DictConfig):
     )
     cfg.model.input_size
 
-    model = Keypointdetector(config=cfg, output_image_size=cfg.model.input_size)
-    # wandb.watch(model)
+    model = Keypointdetector(config=cfg, learning_rate=0.02089296130854041)
+    wandb.watch(model)
     # checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_c/models/', save_top_k=3)
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
@@ -293,10 +362,10 @@ def cli_main(cfg: DictConfig):
         # resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
     )
     trainer.tune(
-        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size)
+        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size, batch_size=cfg.trainer.batch_size)
     )
     trainer.fit(
-        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size)
+        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size, batch_size=cfg.trainer.batch_size)
     )
 
 

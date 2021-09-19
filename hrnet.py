@@ -42,6 +42,7 @@ cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.
 model = build_posenet(cfg.model)
 
 load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+breakpoint()
 # mm = nn.Sequential(*[o for o in model.modules()])
 # mm.eval()
 # breakpoint()
@@ -66,12 +67,10 @@ class WFHRnet(torch.nn.Module):
 
 from typing import Optional
 class FootDetector(pl.LightningModule):
-    def __init__(self, model: Optional[WFHRnet] = None, learning_rate: float = 0.0001):
+    def __init__(self, learning_rate: float = 0.0001):
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
-        # if model is None:
-        #     model = WFHRnet()
-        # self.model = model
+
         self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
         model = build_posenet(self.cfg.model)
         load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
@@ -80,9 +79,8 @@ class FootDetector(pl.LightningModule):
 
     def forward(self, x):
         # use forward for inference/predictions
-        breakpoint()
-        features = self.model.backbone(x)
-        output_heatmap = self.model.keypoint_head.inference_model(features, flip_pairs=None)
+        features = self.backbone(x)
+        output_heatmap = self.head(features)
         return output_heatmap
 
 fd=FootDetector()
