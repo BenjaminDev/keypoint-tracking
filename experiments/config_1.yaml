@@ -6,8 +6,11 @@ wb:
 data:
   base_dir: /mnt/vol_b/training_data/clean
   sets:
-    - 0011-IMG_1029
-    - 0012-IMG_1033
+    # - 0011-IMG_1029
+    # - 0012-IMG_1033
+    # - 0013-IMG_1027
+    - 0013-IMG_1036
+    - 0014-IMG_1037
     # - 0004-bare-feet/source/v001
     # - 0003-socks/source/v001
     # - 0004-bare-feet/source/v001
@@ -17,9 +20,9 @@ data:
     # - 0010-RENDER_3D/SOCKS_90DEG/V001
 
 model:
-  input_size: [480, 480]
+  input_size: [160, 160]
 
 trainer:
   max_epochs: 200
-  batch_size: 2
+  batch_size: 64
 
