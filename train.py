@@ -281,9 +281,13 @@ class Keypointdetector(pl.LightningModule):
                     )
                 label_names = [Keypoints._fields[o - 1] for o in labels.cpu()]
 
-                heatmaps.append(
-                    Image.fromarray(np.uint8(cm.viridis(y_hat.max(axis=0)[0].cpu().numpy()) * 255))
-                )
+                heat_image = Image.new('RGB', (y_hat.shape[0]*y_hat.shape[1], y_hat.shape[2]))
+
+                x_offset = 0
+                for i in range(y_hat.shape[0]):
+                    heat_image.paste(Image.fromarray(np.uint8(cm.viridis(y_hat[i].cpu().numpy()) * 255)),(x_offset,0))
+                    x_offset += y_hat.shape[1]
+                heatmaps.append(heat_image)
                 truth_maps.append(Image.fromarray(np.uint8(cm.viridis(target.max(axis=0)[0].cpu().numpy()) * 255)))
 
                 res_val = draw_keypoints(
@@ -332,7 +336,6 @@ class Keypointdetector(pl.LightningModule):
 
 import os
 
-
 @hydra.main(config_path="./experiments", config_name="config_1.yaml")
 def cli_main(cfg: DictConfig):
     wb = cfg.wb
@@ -359,6 +362,7 @@ def cli_main(cfg: DictConfig):
         stochastic_weight_avg=True,
         gradient_clip_val=0.5,
         accumulate_grad_batches=3,
+        log_every_n_steps=10, # For large batch_size and small samples
         # resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
     )
     trainer.tune(
