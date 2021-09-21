@@ -3,6 +3,9 @@ import argparse
 from pathlib import Path
 from random import sample
 import shutil
+import os
+from tqdm import tqdm
+import cv2
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."
@@ -37,9 +40,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     image_files = sorted(list(args.src_dir.glob(f"*{args.ext}")))
     json_files = sorted(list(args.src_dir.glob(f"*.json")))
-    for json_file, image_file in zip(json_files, image_files):
+    for json_file, image_file in tqdm(zip(json_files, image_files), total=len(image_files)):
         if json_file.stem != image_file.stem:
             raise Exception(f"we have a big problem! meta and image file mismatch: {json_file.stem}.json not paired with {image_file.stem}.png")
+
+        image = cv2.imread(os.fsdecode(image_file))
+        if image is None:
+            print (f"BROKEN FILE: {os.fsdecode(image_file)}")
+            raise AssertionError("remove the image and json file")
     total = len(image_files)
     total_num_val_and_test = int(total*(args.pct_val+args.pct_test))
     total_num_val = int(total*(args.pct_val))
