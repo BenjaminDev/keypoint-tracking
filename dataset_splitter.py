@@ -6,6 +6,13 @@ import shutil
 import os
 from tqdm import tqdm
 import cv2
+from joblib import Parallel, delayed
+
+def verify_image(image_file):
+    image = cv2.imread(os.fsdecode(image_file))
+    if image is None:
+        print (f"BROKEN FILE: {os.fsdecode(image_file)}")
+        raise AssertionError(f"remove the image and json file: {os.fsdecode(image_file)}")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."
@@ -44,10 +51,9 @@ if __name__ == "__main__":
         if json_file.stem != image_file.stem:
             raise Exception(f"we have a big problem! meta and image file mismatch: {json_file.stem}.json not paired with {image_file.stem}.png")
 
-        image = cv2.imread(os.fsdecode(image_file))
-        if image is None:
-            print (f"BROKEN FILE: {os.fsdecode(image_file)}")
-            raise AssertionError("remove the image and json file")
+
+    n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
+    Parallel(n_jobs=n_jobs)(delayed(verify_image)(image_file) for image_file in tqdm(image_files))
     total = len(image_files)
     total_num_val_and_test = int(total*(args.pct_val+args.pct_test))
     total_num_val = int(total*(args.pct_val))
