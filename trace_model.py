@@ -67,7 +67,7 @@ manual_decoded_keypoints = []
 if args.trace:
     if args.model_path.suffix != ".ckpt":
         raise ValueError("--trace is enabled and mdir is not pointing to a .ckpt file.")
-    traceable_model = Keypointdetector.load_from_checkpoint(os.fsdecode(args.model_path), output_image_size=input_size, inferencing=True).eval()
+    traceable_model = Keypointdetector.load_from_checkpoint(os.fsdecode(args.model_path), output_image_size=input_size, inferencing=True).train()
     input_batch = torch.rand(1, 3, *input_size)
     original= traceable_model(input_batch)
     trace = torch.jit.trace(traceable_model, input_batch)
