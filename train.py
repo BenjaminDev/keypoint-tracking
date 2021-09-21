@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 from re import S
 from typing import Dict, Tuple
 
@@ -9,6 +10,7 @@ import plotly.graph_objects as go
 import pytorch_lightning as pl
 import timm
 import torch
+from torchmetrics import MeanAbsoluteError
 
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 import wandb
@@ -173,6 +175,8 @@ criterion = Loss_weighted()
 #         y_hat = self(x)
 #         loss = criterion(y_hat, targets, M)
 #         return loss
+mean_absolute_error = MeanAbsoluteError()
+
 class Keypointdetector(pl.LightningModule):
     def __init__(self,   config: DictConfig,
 
@@ -191,6 +195,7 @@ class Keypointdetector(pl.LightningModule):
         self.head = [o for o in model.children()][1]
         self.upsample=nn.Upsample(size=tuple(config.model.input_size), mode="bilinear", align_corners=False)
         self.model = nn.Sequential(self.backbone, self.head, self.upsample)
+
 
     def forward(self, x):
         # use forward for inference/predictions
@@ -251,6 +256,9 @@ class Keypointdetector(pl.LightningModule):
         pred_images, truth_images, captions = [], [], []
         heatmaps = []
         truth_maps = []
+        mae = defaultdict(list)
+        pred_kps=defaultdict(list) # [key_point_index]->[mae_of_sin]
+        target_kps=defaultdict(list)
         wandb.log(
             {
                 f"val_loss_hist": wandb.Histogram(
@@ -258,6 +266,7 @@ class Keypointdetector(pl.LightningModule):
                 )
             }
         )
+
         for batch_of_outputs in all_batches_of_outputs[::10]:
             #
             # if len(outputs) != 5:
@@ -274,13 +283,14 @@ class Keypointdetector(pl.LightningModule):
 
                 image = image * STD[:, None, None] + MEAN[:, None, None]
 
-                keypoints = []
+                pred_keypoints = []
                 for i in range(y_hat.shape[0]):
-                    keypoints.append(
+                    pred_keypoints.append(
                         (y_hat[i] == torch.max(y_hat[i])).nonzero()[0].tolist()[::-1]
                     )
                 label_names = [Keypoints._fields[o - 1] for o in labels.cpu()]
-
+                for i, p_kps in enumerate(pred_keypoints):
+                    pred_kps[i].append(p_kps)
                 heat_image = Image.new('RGB', (y_hat.shape[0]*y_hat.shape[1], y_hat.shape[2]))
 
                 x_offset = 0
@@ -292,7 +302,7 @@ class Keypointdetector(pl.LightningModule):
 
                 res_val = draw_keypoints(
                     image,
-                    keypoints,
+                    pred_keypoints,
                     label_names,
                     show_labels=True,
                     short_names=True,
@@ -302,15 +312,17 @@ class Keypointdetector(pl.LightningModule):
                 # if denormalize:
                 pred_images.append(res_val)
 
-                keypoints = []
+                target_keypoints = []
                 for i in range(target.shape[0]):
-                    keypoints.append(
+                    target_keypoints.append(
                         (target[i] == torch.max(target[i])).nonzero()[0].tolist()[::-1]
                     )
                 label_names = [Keypoints._fields[o - 1] for o in labels.cpu()]
+                for i, t_kps in enumerate(target_keypoints):
+                    target_kps[i].append(t_kps)
                 res = draw_keypoints(
                     image,
-                    keypoints,
+                    target_keypoints,
                     label_names,
                     show_labels=True,
                     short_names=True,
@@ -320,6 +332,13 @@ class Keypointdetector(pl.LightningModule):
                 truth_images.append(res)
                 captions.append(caption)
 
+
+        for i in range(12):
+            wandb.log(
+                {
+                    f"mean_absolute_error_kps{i}": mean_absolute_error(torch.tensor(pred_kps[i]), torch.tensor(target_kps[i])).item()
+                }
+            )
         wandb.log(
             {
                 f"Pred Keypoints": [
