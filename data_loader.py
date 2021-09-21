@@ -3,6 +3,9 @@ import warnings
 from pathlib import Path
 from typing import List, Tuple
 from albumentations.augmentations.geometric.rotate import Rotate
+from albumentations.augmentations.geometric.transforms import Perspective
+from albumentations.augmentations.transforms import ChannelDropout, RGBShift
+from albumentations.core.composition import OneOf
 from scipy.ndimage.morphology import grey_dilation
 import cv2
 from tqdm import tqdm
@@ -201,12 +204,12 @@ class KeypointsDataset(Dataset):
         self.heatmapper=HeatmapGenerator(image_size[0],12)
         # self.heatmapper=ModelLabeller(480,14,model_path=Path("/mnt/vol_c/code/sketchpad/coreml_models/reference/model3.mlmodel"))
         cancel=False
-        for im_file in tqdm(self.image_files):
-            # Hack to check for broken images
-            image = cv2.imread(os.fsdecode(im_file))
-            if image is None:
-                cancel=True
-                print (f"BROKEN FILE: {os.fsdecode(im_file)}")
+        # for im_file in tqdm(self.image_files):
+        #     # Hack to check for broken images
+        #     image = cv2.imread(os.fsdecode(im_file))
+        #     if image is None:
+        #         cancel=True
+        #         print (f"BROKEN FILE: {os.fsdecode(im_file)}")
         if cancel:
             raise AssertionError("Broken files")
         if not any(
@@ -221,6 +224,8 @@ class KeypointsDataset(Dataset):
         self.transform = transform
         self.train = train
     def crop_keep_points(self, image, keypoints):
+        if random() < 0.2:
+            return image, keypoints
         h, w,_ = image.shape
         total_border = randint(10,max(w,h))
         x_ratio = random()
@@ -238,12 +243,8 @@ class KeypointsDataset(Dataset):
 
     def __getitem__(self, index):
         if self.train:
-            try:
-                image = cv2.imread(os.fsdecode(self.image_files[index]))
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            except:
-                print(f"BROKEN FILE: {self.image_files[index]}")
-                return self[index+1]
+            image = cv2.imread(os.fsdecode(self.image_files[index]))
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             metadata = read_meta(self.label_files[index])
             keypoints = metadata.keypoints
             # h, w, _ = image.shape  # (H x W xC)
@@ -264,6 +265,7 @@ class KeypointsDataset(Dataset):
             _, h, w = image.shape  # (C x H x W)
             self.sigma=float(h)/500.0 # TODO: See how to change this and ideally make it smaller as the model trains. self.trainer.current_epoch should be it!
             keypoints = [(x / w, y / h) for x, y in trasformed["keypoints"]]
+
             keypoints = torch.tensor(keypoints).type(torch.float)
             numeric_labels = torch.tensor(trasformed["labels"]).type(torch.int64)
             visible = torch.tensor(trasformed['visible']).type(torch.float)
@@ -320,13 +322,18 @@ class KeypointsDataModule(pl.LightningDataModule):
         self.train_transforms = A.Compose(
             [
                 # A.RandomCrop(*input_size),
-                # A.Rotate(limit=45,p=0.2,),
+                A.SafeRotate(limit=90,p=0.2,border_mode=cv2.BORDER_CONSTANT),
+                # A.Perspective(scale=(5.0,5.0),p=1.0),
                 A.Resize(*input_size),
+                A.OneOf([
                 A.ColorJitter(),
-                A.RandomBrightnessContrast(),
+                A.ChannelShuffle(p=0.2),
+                A.RGBShift(p=0.2),
+                A.RandomBrightnessContrast()],p=0.4),
                 A.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])),
             ],
             keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
+
         )
         self.test_transforms = A.Compose(
             [
@@ -368,7 +375,7 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    data_dirs=["/mnt/vol_b/training_data/clean/0004-bare-feet/source/v001"]
+    data_dirs=["/mnt/vol_b/training_data/clean/0013-IMG_1036"]
     input_size=(160, 160)
     dm = KeypointsDataModule(data_dirs, input_size, batch_size=1)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
@@ -378,7 +385,7 @@ if __name__ == "__main__":
     #     pass
 
     breakpoint()
-    sample, target, M = dl.dataset.datasets[0].plot_sample(0)
+    sample, target, M = dl.dataset.datasets[0].plot_sample(10)
     sample.save("/tmp/tmp2.png")
     breakpoint()
     target = target*255
