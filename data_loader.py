@@ -332,7 +332,7 @@ class KeypointsDataModule(pl.LightningDataModule):
                 A.RandomBrightnessContrast()],p=0.4),
                 A.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])),
             ],
-            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
+            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"], remove_invisible=False),
 
         )
         self.test_transforms = A.Compose(
@@ -340,7 +340,7 @@ class KeypointsDataModule(pl.LightningDataModule):
                 A.Resize(*input_size),
                 A.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])),
             ],
-            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"]),
+            keypoint_params=A.KeypointParams(format="xy",label_fields=['labels',"visible"],remove_invisible=False),
         )
     # def prepare_data(self):
     #     # download
@@ -375,14 +375,14 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    data_dirs=["/mnt/vol_b/training_data/clean/0013-IMG_1036"]
+    data_dirs=["/mnt/vol_b/training_data/clean/0014-IMG_1037"]
     input_size=(160, 160)
     dm = KeypointsDataModule(data_dirs, input_size, batch_size=1)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
     dl = dm.train_dataloader()
-    # for o, _ in dl:
-    #     pass
+    for o, _ in dl:
+        pass
 
     breakpoint()
     sample, target, M = dl.dataset.datasets[0].plot_sample(10)
