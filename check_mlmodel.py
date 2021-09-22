@@ -1,21 +1,23 @@
-from datetime import time
-import coremltools as ct
-from pathlib import Path
-from coremltools import models
-from tqdm import tqdm
-from utils import draw_keypoints, Keypoints, image_to_tensor
-import PIL
-from torch import nn
-import torch
-from PIL import Image
-import os
-from torchvision.utils import draw_bounding_boxes
 import argparse
-from matplotlib import cm
-import numpy as np
+import os
+import shutil
+from datetime import time
 from pathlib import Path
 from random import sample
-import shutil
+
+import coremltools as ct
+import numpy as np
+import PIL
+import torch
+from coremltools import models
+from matplotlib import cm
+from PIL import Image
+from torch import nn
+from torchvision.utils import draw_bounding_boxes
+from tqdm import tqdm
+
+from utils import Keypoints, draw_keypoints, image_to_tensor
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Show mlcore model predictions"
@@ -113,5 +115,6 @@ if __name__ == "__main__":
             annotated_image = draw_bounding_boxes(image, torch.tensor(bboxes))
             PIL.Image.fromarray(annotated_image.permute(1, 2, 0).numpy()).save(f"/Volumes/external/wf/data/ARSession/out_yolov5/{i}_tmp.png")
     from subprocess import check_call
+
     # ffmpeg -framerate 25 -i 'TRAIN_v004_.0%3d_out.png' -c:v libx264 -pix_fmt yuv420p out.mp4
     out = check_call(["ffmpeg -framerate 25 -i  /Volumes/external/wf/data/ARSession/out_yolov5/%d_tmp.png -c:v libx264 -pix_fmt yuv420p /Volumes/external/wf/data/ARSession/out_yolov5/out_new.mp4"], shell=True)

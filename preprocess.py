@@ -5,15 +5,16 @@ from typing import Pattern
 
 import numpy as np
 import OpenEXR
+from joblib import Parallel, delayed
 from PIL import Image
 from pydantic.types import Json
 from scipy import ndimage
 from tqdm import tqdm
-from joblib import Parallel, delayed
 
 from utils import (MetaData, draw_bounding_box, draw_keypoints, exr2rgb,
                    exr_channel_to_np, mask_to_bounding_boxes,
                    mask_to_keypoints, read_meta)
+
 
 def process_data(exr_file, args):
 # Read "RGB" exr file

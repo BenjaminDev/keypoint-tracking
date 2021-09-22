@@ -1,14 +1,15 @@
 
-from train import Keypointdetector
-from utils import load_image, Keypoints, draw_keypoints, sn
+import argparse
+import os
 from pathlib import Path
-from tqdm import tqdm
-import torch
+
 import albumentations as A
 import cv2
-import os
+import torch
+from tqdm import tqdm
 
-import argparse
+from train import Keypointdetector
+from utils import Keypoints, draw_keypoints, load_image, sn
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -68,7 +69,8 @@ if __name__ == "__main__":
     MEAN = 255*torch.tensor([0.485, 0.456, 0.406])
     STD = 255*torch.tensor([0.229, 0.224, 0.225])
 
-    from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
+    from torch.utils.data import (ConcatDataset, DataLoader, Dataset,
+                                  random_split)
     class InferenceDataset(Dataset):
 
         def __init__(self, src_dir):

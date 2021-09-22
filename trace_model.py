@@ -5,7 +5,6 @@ import os
 # import warnings
 # from datetime import datetime
 from pathlib import Path
-from PIL.Image import fromarray
 
 # import onnxruntime
 # import coremltools
@@ -14,11 +13,15 @@ from PIL.Image import fromarray
 # import numpy as np
 # import PIL
 import torch
+from mmpose.models.registry import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
+from PIL.Image import fromarray
+
+from train import Keypointdetector
 # from coremltools import models
 # from coremltools.models import pipeline
 # from pytorch_lightning.utilities.warnings import LightningDeprecationWarning
-from utils import load_image, draw_keypoints, Keypoints
-from train import Keypointdetector
+from utils import Keypoints, draw_keypoints, load_image
+
 # from utils import Keypoints, draw_keypoints
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -67,7 +70,7 @@ manual_decoded_keypoints = []
 if args.trace:
     if args.model_path.suffix != ".ckpt":
         raise ValueError("--trace is enabled and mdir is not pointing to a .ckpt file.")
-    traceable_model = Keypointdetector.load_from_checkpoint(os.fsdecode(args.model_path), output_image_size=input_size, inferencing=True).train()
+    traceable_model = Keypointdetector.load_from_checkpoint(os.fsdecode(args.model_path), output_image_size=input_size, inferencing=True).eval()
     input_batch = torch.rand(1, 3, *input_size)
     original= traceable_model(input_batch)
     trace = torch.jit.trace(traceable_model, input_batch)
@@ -85,6 +88,7 @@ else:
 
 # test_image = load_image("/mnt/vol_b/training_data/clean/0014-IMG_1037/frame_002.png", input_size)
 import torchvision
+
 transform = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
     torchvision.transforms.Normalize(
@@ -93,6 +97,7 @@ transform = torchvision.transforms.Compose([
     ),
 ])
 import PIL
+
 image_path ="/mnt/vol_b/training_data/clean/0014-IMG_1037/frame_002.png"
 test_image = transform(PIL.Image.open(image_path).resize(input_size)).unsqueeze(0)
 original= traceable_model(test_image).squeeze(0)

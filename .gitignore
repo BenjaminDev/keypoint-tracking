@@ -7,3 +7,5 @@ wandb/*
 outputs/*
 *.onnx
 *.mlmodel
+notebooks/interest_keypoint_tracking.ipynb
+notebooks/interest_keypoint_tracking.ipynb

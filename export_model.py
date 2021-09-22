@@ -13,12 +13,14 @@ import coremltools as ct
 # import numpy as np
 import PIL
 import torch
+
+from train import Keypointdetector
+from utils import Keypoints, draw_keypoints
+
 # from coremltools import models
 # from coremltools.models import pipeline
 # from pytorch_lightning.utilities.warnings import LightningDeprecationWarning
 
-from train import Keypointdetector
-from utils import Keypoints, draw_keypoints
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."

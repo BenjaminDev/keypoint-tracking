@@ -1,15 +1,16 @@
+import sys
 from typing import List
 
-from numpy.core.fromnumeric import ndim
-
-from dask_image.imread import imread
 import napari
 import numpy as np
+from dask_image.imread import imread
 from magicgui.widgets import ComboBox, Container
 from napari.layers.points import Points
-import sys
+from numpy.core.fromnumeric import ndim
+
 sys.path.append(".")
 from utils import COLORS, Keypoints
+
 COLOR_CYCLE = [
         '#1f77b4',
         '#ff7f0e',

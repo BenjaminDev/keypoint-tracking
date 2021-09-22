@@ -1,15 +1,13 @@
-import torch
-from mmpose.models import HRNet
-from mmcv import Config, DictAction
-from mmpose.models import HRNet
-import torch
-from mmcv.utils import build_from_cfg
-from mmpose.apis import train_model
-from torch import nn
-from mmpose.apis import multi_gpu_test, single_gpu_test
-from mmcv.runner import get_dist_info, init_dist, load_checkpoint
 import pytorch_lightning as pl
+import torch
+from mmcv import Config, DictAction
+from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+from mmcv.utils import build_from_cfg
+from mmpose.apis import multi_gpu_test, single_gpu_test, train_model
+from mmpose.models import HRNet
 from mmpose.models.builder import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
+from torch import nn
+
 
 def build(cfg, registry, default_args=None):
     """Build a module.
@@ -66,6 +64,8 @@ class WFHRnet(torch.nn.Module):
         return self.model(x, **kwargs)
 
 from typing import Optional
+
+
 class FootDetector(pl.LightningModule):
     def __init__(self, learning_rate: float = 0.0001):
         super().__init__()

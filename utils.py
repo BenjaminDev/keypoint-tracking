@@ -18,7 +18,7 @@ from torchvision import transforms as T
 from torchvision import utils
 from torchvision.transforms import ToTensor
 
-image_to_tensor = T.Compose([T.ToTensor(), T.ConvertImageDtype(torch.uint8)])
+image_to_tensor = T.Compose([T.ToTensor(),T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])), T.ConvertImageDtype(torch.uint8)])
 # FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
 FLOAT =float
 
@@ -219,8 +219,11 @@ def draw_keypoints(
     )
     return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
 
-import cv2
 import os
+
+import cv2
+
+
 def load_image(image_path:Path, size:Tuple[int, int]):
     image = PIL.Image.open(image_path).resize(size)
     # image = cv2.imread(os.fsdecode(image_path))

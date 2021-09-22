@@ -1,12 +1,14 @@
 
 import argparse
+import os
+import shutil
 from pathlib import Path
 from random import sample
-import shutil
-import os
-from tqdm import tqdm
+
 import cv2
 from joblib import Parallel, delayed
+from tqdm import tqdm
+
 
 def verify_image(image_file):
     image = cv2.imread(os.fsdecode(image_file))

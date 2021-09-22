@@ -1,22 +1,29 @@
 import argparse
+import math
 from collections import defaultdict
 from re import S
 from typing import Dict, Tuple
 
 import hydra
-from numpy import heaviside
+import numpy as np
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import pytorch_lightning as pl
 import timm
 import torch
-from torchmetrics import MeanAbsoluteError
-
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 import wandb
-from losses import Loss_weighted
 from kornia.losses.focal import FocalLoss
+from matplotlib import cm
+from mmcv import Config, DictAction
+from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+from mmcv.utils import build_from_cfg
+from mmpose.apis import multi_gpu_test, single_gpu_test, train_model
+from mmpose.models import HRNet
+from mmpose.models.builder import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
+from numpy import heaviside
 from omegaconf import DictConfig, OmegaConf
+from PIL import Image
 from pytorch_lightning import callbacks
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -24,24 +31,12 @@ from pytorch_lightning.utilities.cli import LightningCLI
 from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
-from PIL import Image
-from matplotlib import cm
-import numpy as np
+from torchmetrics import MeanAbsoluteError
+
 from data_loader import KeypointsDataModule
+from losses import Loss_weighted
 from utils import Keypoints, draw_keypoints
-import math
-import torch
-from mmpose.models import HRNet
-from mmcv import Config, DictAction
-from mmpose.models import HRNet
-import torch
-from mmcv.utils import build_from_cfg
-from mmpose.apis import train_model
-from torch import nn
-from mmpose.apis import multi_gpu_test, single_gpu_test
-from mmcv.runner import get_dist_info, init_dist, load_checkpoint
-import pytorch_lightning as pl
-from mmpose.models.builder import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
+
 
 def build(cfg, registry, default_args=None):
     """Build a module.
@@ -66,38 +61,11 @@ def build(cfg, registry, default_args=None):
 def build_posenet(cfg):
     """Build posenet."""
     return build(cfg, POSENETS)
-def wing_loss(output: torch.Tensor, target: torch.Tensor, width=5, curvature=0.5, reduction="mean"):
-    """
-    https://arxiv.org/pdf/1711.06753.pdf
-    :param output:
-    :param target:
-    :param width:
-    :param curvature:
-    :param reduction:
-    :return:
-    """
-    diff_abs = (target - output).abs()
-    loss = diff_abs.clone()
 
-    idx_smaller = diff_abs < width
-    idx_bigger = diff_abs >= width
-
-    loss[idx_smaller] = width * torch.log(1 + diff_abs[idx_smaller] / curvature)
-
-    C = width - width * math.log(1 + width / curvature)
-    loss[idx_bigger] = loss[idx_bigger] - C
-
-    if reduction == "sum":
-        loss = loss.sum()
-
-    if reduction == "mean":
-        loss = loss.mean()
-
-    return loss
 # criterion = nn.MSELoss(reduction="sum")
 # criterion = wing_loss
 criterion = Loss_weighted()
-
+# TODO: Make models into separate class so it's easy to swap them out.
 # class Keypointdetector(pl.LightningModule):
 #     def __init__(
 #         self,
@@ -190,7 +158,7 @@ class Keypointdetector(pl.LightningModule):
         self.valdation_count = 0
         self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
         model = build_posenet(self.cfg.model)
-        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/pretrained_models/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
         self.backbone = [o for o in model.children()][0]
         self.head = [o for o in model.children()][1]
         self.upsample=nn.Upsample(size=tuple(config.model.input_size), mode="bilinear", align_corners=False)
@@ -198,12 +166,9 @@ class Keypointdetector(pl.LightningModule):
 
 
     def forward(self, x):
-        # use forward for inference/predictions
-        # features = self.backbone(x)
-        # output_heatmap = self.head(features)
-        # output_heatmap = self.upsample(output_heatmap)
         output_heatmap = self.model(x)
         return output_heatmap
+
     def training_step(self, batch, batch_idx):
         x, (targets, M, keypoints, visible, labels, captions) = batch
         y_hat = self(x)
@@ -355,6 +320,7 @@ class Keypointdetector(pl.LightningModule):
 
 import os
 
+
 @hydra.main(config_path="./experiments", config_name="config_1.yaml")
 def cli_main(cfg: DictConfig):
     wb = cfg.wb
@@ -364,7 +330,7 @@ def cli_main(cfg: DictConfig):
     )
     cfg.model.input_size
 
-    model = Keypointdetector(config=cfg, learning_rate=0.02089296130854041)
+    model = Keypointdetector(config=cfg, learning_rate=0.017378008287493765)
     wandb.watch(model)
     # checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_c/models/', save_top_k=3)
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
@@ -380,9 +346,9 @@ def cli_main(cfg: DictConfig):
         # precision=16,
         stochastic_weight_avg=True,
         gradient_clip_val=0.5,
-        accumulate_grad_batches=3,
+        # accumulate_grad_batches=3,
         log_every_n_steps=10, # For large batch_size and small samples
-        # resume_from_checkpoint="/mnt/vol_c/models/wf/2vjq0k9r/checkpoints/epoch=199-step=58000.ckpt"
+        resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt"
     )
     trainer.tune(
         model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size, batch_size=cfg.trainer.batch_size)
