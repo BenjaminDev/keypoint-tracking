@@ -18,9 +18,18 @@ from torchvision import transforms as T
 from torchvision import utils
 from torchvision.transforms import ToTensor
 
-image_to_tensor = T.Compose([T.ToTensor(),T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std= torch.tensor([0.229, 0.224, 0.225])), T.ConvertImageDtype(torch.uint8)])
+image_to_tensor = T.Compose(
+    [
+        T.ToTensor(),
+        T.Normalize(
+            mean=torch.tensor([0.485, 0.456, 0.406]),
+            std=torch.tensor([0.229, 0.224, 0.225]),
+        ),
+        T.ConvertImageDtype(torch.uint8),
+    ]
+)
 # FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
-FLOAT =float
+FLOAT = float
 
 COLORS = {
     "left_shoe_front": "#F40001",
@@ -40,18 +49,18 @@ COLORS = {
     "body": "#FFFFFF",
 }
 sn = {
-    "RIGHT_SHOE_FRONT" : "RF",
-        "RIGHT_SHOE_TOP" : "RT",
-        "RIGHT_SHOE_OUTER_SIDE" : "RO",
-        "RIGHT_SHOE_INNER_SIDE" : "RI",
-        "RIGHT_SHOE_BACK": "RB",
-        "RIGHT_SHOE_ANKLE" : "RA",
-        "LEFT_SHOE_BACK" : "LB",
-        "LEFT_SHOE_ANKLE" : "LA",
-        "LEFT_SHOE_OUTER_SIDE" : "LO",
-        "LEFT_SHOE_TOP": "LT",
-        "LEFT_SHOE_INNER_SIDE" : "LI",
-        "LEFT_SHOE_FRONT" : "LF",
+    "RIGHT_SHOE_FRONT": "RF",
+    "RIGHT_SHOE_TOP": "RT",
+    "RIGHT_SHOE_OUTER_SIDE": "RO",
+    "RIGHT_SHOE_INNER_SIDE": "RI",
+    "RIGHT_SHOE_BACK": "RB",
+    "RIGHT_SHOE_ANKLE": "RA",
+    "LEFT_SHOE_BACK": "LB",
+    "LEFT_SHOE_ANKLE": "LA",
+    "LEFT_SHOE_OUTER_SIDE": "LO",
+    "LEFT_SHOE_TOP": "LT",
+    "LEFT_SHOE_INNER_SIDE": "LI",
+    "LEFT_SHOE_FRONT": "LF",
 }
 KeypointInfo = namedtuple(
     "KeypointInfo",
@@ -76,13 +85,7 @@ KeypointInfo = namedtuple(
 )
 
 RegionInfo = namedtuple(
-    "RegionInfo",
-    [
-        "BODY",
-        "RIGHT_SHOE",
-        "LEFT_SHOE",
-    ],
-    defaults=[13, 14, 15],
+    "RegionInfo", ["BODY", "RIGHT_SHOE", "LEFT_SHOE",], defaults=[13, 14, 15],
 )
 # Common Types
 Keypoints = KeypointInfo()
@@ -92,6 +95,7 @@ PImage = PIL.Image.Image
 TImage = torch.Tensor
 Points = List[Tuple[int, int]]
 TPoints = torch.Tensor
+
 
 class MetaData(BaseModel):
     source: Dict[str, str]
@@ -177,15 +181,13 @@ def draw_bounding_box(image, bounding_boxes: Dict):
     return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
 
 
-
-
 def draw_keypoints(
     image: Union[PImage, TImage],
     keypoints: Union[Points, TPoints],
     labels: List[str],
     show_labels: bool = True,
-    short_names:bool = True,
-    visible: Union[List, torch.Tensor]=None,
+    short_names: bool = True,
+    visible: Union[List, torch.Tensor] = None,
     show_all: bool = False,
 ):
     if not isinstance(image, torch.Tensor):
@@ -203,7 +205,7 @@ def draw_keypoints(
     d = image.size()[1] // 300
     bboxes = [(xy[0] - d, xy[1] - d, xy[0] + d, xy[1] + d) for xy in keypoints]
     colors = None
-    if not labels is  None:
+    if not labels is None:
         colors = [COLORS[o.lower()] for o in labels]
 
     if not show_all:
@@ -219,12 +221,13 @@ def draw_keypoints(
     )
     return PIL.Image.fromarray(image.permute(1, 2, 0).numpy())
 
+
 import os
 
 import cv2
 
 
-def load_image(image_path:Path, size:Tuple[int, int]):
+def load_image(image_path: Path, size: Tuple[int, int]):
     image = PIL.Image.open(image_path).resize(size)
     # image = cv2.imread(os.fsdecode(image_path))
     # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)

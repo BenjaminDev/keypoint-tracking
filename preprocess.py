@@ -11,13 +11,20 @@ from pydantic.types import Json
 from scipy import ndimage
 from tqdm import tqdm
 
-from utils import (MetaData, draw_bounding_box, draw_keypoints, exr2rgb,
-                   exr_channel_to_np, mask_to_bounding_boxes,
-                   mask_to_keypoints, read_meta)
+from utils import (
+    MetaData,
+    draw_bounding_box,
+    draw_keypoints,
+    exr2rgb,
+    exr_channel_to_np,
+    mask_to_bounding_boxes,
+    mask_to_keypoints,
+    read_meta,
+)
 
 
 def process_data(exr_file, args):
-# Read "RGB" exr file
+    # Read "RGB" exr file
     try:
         exr_file_discriptor = OpenEXR.InputFile(os.fsdecode(exr_file))
     except OSError:
@@ -99,14 +106,14 @@ if __name__ == "__main__":
         dest="rgb_tag",
         type=str,
         help="Tag in file name denoting it contains rgb data. Eg: TRAIN_bare_feet_{MAIN}_v001_.0116.exr here rgb_tag='MAIN', or TRAIN_bare_feet_v001_.0000.exr here tag is rgb_tag=''",
-        default=''
+        default="",
     )
     parser.add_argument(
         "--mask-tag",
         dest="mask_tag",
         type=str,
         help="Mask filename tag part. Eg: TRAIN_bare_feet_ID_v001_.0116.exr here mask_tag='TRAIN_bare_feet_ID_v001_', or TRAIN_bare_feet_v001_.0000.exr here tag is mask_tag='TRAIN_bare_feet_v001_'",
-        default=''
+        default="",
     )
     parser.add_argument(
         "--num",
@@ -126,7 +133,9 @@ if __name__ == "__main__":
     args.dst_dir.mkdir(parents=True, exist_ok=True)
 
     if args.rgb_tag == args.mask_tag:
-        raise ValueError(f"tags must be different: rgb = {args.rgb_tag} and mask = {args.mask}")
+        raise ValueError(
+            f"tags must be different: rgb = {args.rgb_tag} and mask = {args.mask}"
+        )
     # if args.rgb_tag == '':
     #     rgb_tag = f'[!{args.mask_tag}]'
     # else:
@@ -134,7 +143,12 @@ if __name__ == "__main__":
     # tmp = list(args.src_dir.glob(f"*{rgb_tag}*.exr"))
     # breakpoint()
     n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
-    Parallel(n_jobs=n_jobs)(delayed(process_data)(exr_file, args) for exr_file in tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num]))
+    Parallel(n_jobs=n_jobs)(
+        delayed(process_data)(exr_file, args)
+        for exr_file in tqdm(
+            [o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][: args.num]
+        )
+    )
     # for i, exr_file in enumerate(tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num])):
 
     #     # Read "RGB" exr file

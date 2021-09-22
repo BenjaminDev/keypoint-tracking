@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import pytorch_lightning as pl
 import timm
 import torch
+
 # criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 import wandb
 from kornia.losses.focal import FocalLoss
@@ -51,16 +52,16 @@ def build(cfg, registry, default_args=None):
     """
 
     if isinstance(cfg, list):
-        modules = [
-            build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg
-        ]
+        modules = [build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg]
         return nn.Sequential(*modules)
 
     return build_from_cfg(cfg, registry, default_args)
 
+
 def build_posenet(cfg):
     """Build posenet."""
     return build(cfg, POSENETS)
+
 
 # criterion = nn.MSELoss(reduction="sum")
 # criterion = wing_loss
@@ -145,25 +146,34 @@ criterion = Loss_weighted()
 #         return loss
 mean_absolute_error = MeanAbsoluteError()
 
-class Keypointdetector(pl.LightningModule):
-    def __init__(self,   config: DictConfig,
 
+class Keypointdetector(pl.LightningModule):
+    def __init__(
+        self,
+        config: DictConfig,
         inferencing: bool = False,
         num_keypoints: int = 12,
         learning_rate: float = 0.0001,
-        ):
+    ):
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
         self.learning_rate = learning_rate
         self.valdation_count = 0
-        self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
+        self.cfg = Config.fromfile(
+            "/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py"
+        )
         model = build_posenet(self.cfg.model)
-        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/pretrained_models/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+        load_checkpoint(
+            model,
+            "/mnt/vol_c/code/sketchpad/pretrained_models/naive_litehrnet_18_coco_256x192.pth",
+            map_location="cpu",
+        )
         self.backbone = [o for o in model.children()][0]
         self.head = [o for o in model.children()][1]
-        self.upsample=nn.Upsample(size=tuple(config.model.input_size), mode="bilinear", align_corners=False)
+        self.upsample = nn.Upsample(
+            size=tuple(config.model.input_size), mode="bilinear", align_corners=False
+        )
         self.model = nn.Sequential(self.backbone, self.head, self.upsample)
-
 
     def forward(self, x):
         output_heatmap = self.model(x)
@@ -175,6 +185,7 @@ class Keypointdetector(pl.LightningModule):
         loss = criterion(y_hat, targets, M)
         # loss = self.head.get_loss(y_hat, targets, M)
         return loss
+
     def validation_step(self, batch, batch_idx):
 
         x, (targets, M, keypoints, visible, labels, captions) = batch
@@ -222,8 +233,8 @@ class Keypointdetector(pl.LightningModule):
         heatmaps = []
         truth_maps = []
         mae = defaultdict(list)
-        pred_kps=defaultdict(list) # [key_point_index]->[mae_of_sin]
-        target_kps=defaultdict(list)
+        pred_kps = defaultdict(list)  # [key_point_index]->[mae_of_sin]
+        target_kps = defaultdict(list)
         wandb.log(
             {
                 f"val_loss_hist": wandb.Histogram(
@@ -256,14 +267,25 @@ class Keypointdetector(pl.LightningModule):
                 label_names = [Keypoints._fields[o - 1] for o in labels.cpu()]
                 for i, p_kps in enumerate(pred_keypoints):
                     pred_kps[i].append(p_kps)
-                heat_image = Image.new('RGB', (y_hat.shape[0]*y_hat.shape[1], y_hat.shape[2]))
+                heat_image = Image.new(
+                    "RGB", (y_hat.shape[0] * y_hat.shape[1], y_hat.shape[2])
+                )
 
                 x_offset = 0
                 for i in range(y_hat.shape[0]):
-                    heat_image.paste(Image.fromarray(np.uint8(cm.viridis(y_hat[i].cpu().numpy()) * 255)),(x_offset,0))
+                    heat_image.paste(
+                        Image.fromarray(
+                            np.uint8(cm.viridis(y_hat[i].cpu().numpy()) * 255)
+                        ),
+                        (x_offset, 0),
+                    )
                     x_offset += y_hat.shape[1]
                 heatmaps.append(heat_image)
-                truth_maps.append(Image.fromarray(np.uint8(cm.viridis(target.max(axis=0)[0].cpu().numpy()) * 255)))
+                truth_maps.append(
+                    Image.fromarray(
+                        np.uint8(cm.viridis(target.max(axis=0)[0].cpu().numpy()) * 255)
+                    )
+                )
 
                 res_val = draw_keypoints(
                     image,
@@ -297,11 +319,12 @@ class Keypointdetector(pl.LightningModule):
                 truth_images.append(res)
                 captions.append(caption)
 
-
         for i in range(12):
             wandb.log(
                 {
-                    f"mean_absolute_error_kps{i}": mean_absolute_error(torch.tensor(pred_kps[i]), torch.tensor(target_kps[i])).item()
+                    f"mean_absolute_error_kps{i}": mean_absolute_error(
+                        torch.tensor(pred_kps[i]), torch.tensor(target_kps[i])
+                    ).item()
                 }
             )
         wandb.log(
@@ -312,8 +335,12 @@ class Keypointdetector(pl.LightningModule):
                 f"Truth Keypoints": [
                     wandb.Image(o, caption=c) for o, c in zip(truth_images, captions)
                 ],
-                f"Heatmaps": [wandb.Image(o, caption=c) for o, c in zip(heatmaps, captions)],
-                f"TruthMaps": [wandb.Image(o, caption=c) for o, c in zip(truth_maps, captions)],
+                f"Heatmaps": [
+                    wandb.Image(o, caption=c) for o, c in zip(heatmaps, captions)
+                ],
+                f"TruthMaps": [
+                    wandb.Image(o, caption=c) for o, c in zip(truth_maps, captions)
+                ],
             }
         )
 
@@ -347,14 +374,24 @@ def cli_main(cfg: DictConfig):
         stochastic_weight_avg=True,
         gradient_clip_val=0.5,
         # accumulate_grad_batches=3,
-        log_every_n_steps=10, # For large batch_size and small samples
-        resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt"
+        log_every_n_steps=10,  # For large batch_size and small samples
+        resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt",
     )
     trainer.tune(
-        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size, batch_size=cfg.trainer.batch_size)
+        model,
+        KeypointsDataModule(
+            data_dirs=data_dirs,
+            input_size=cfg.model.input_size,
+            batch_size=cfg.trainer.batch_size,
+        ),
     )
     trainer.fit(
-        model, KeypointsDataModule(data_dirs=data_dirs, input_size=cfg.model.input_size, batch_size=cfg.trainer.batch_size)
+        model,
+        KeypointsDataModule(
+            data_dirs=data_dirs,
+            input_size=cfg.model.input_size,
+            batch_size=cfg.trainer.batch_size,
+        ),
     )
 
 

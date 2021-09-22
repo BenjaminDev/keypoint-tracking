@@ -22,16 +22,16 @@ def build(cfg, registry, default_args=None):
     """
 
     if isinstance(cfg, list):
-        modules = [
-            build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg
-        ]
+        modules = [build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg]
         return nn.Sequential(*modules)
 
     return build_from_cfg(cfg, registry, default_args)
 
+
 def build_posenet(cfg):
     """Build posenet."""
     return build(cfg, POSENETS)
+
 
 img = torch.rand(1, 3, 160, 160)
 
@@ -39,7 +39,11 @@ img = torch.rand(1, 3, 160, 160)
 cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
 model = build_posenet(cfg.model)
 
-load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+load_checkpoint(
+    model,
+    "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth",
+    map_location="cpu",
+)
 breakpoint()
 # mm = nn.Sequential(*[o for o in model.modules()])
 # mm.eval()
@@ -49,19 +53,28 @@ features = model.backbone(img)
 # features = model.neck(features)
 output_heatmap = model.keypoint_head.inference_model(features, flip_pairs=None)
 breakpoint()
-class WFHRnet(torch.nn.Module):
 
+
+class WFHRnet(torch.nn.Module):
     def __init__(self):
         super(WFHRnet, self).__init__()
-        self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
+        self.cfg = Config.fromfile(
+            "/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py"
+        )
         model = build_posenet(self.cfg.model)
 
-        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+        load_checkpoint(
+            model,
+            "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth",
+            map_location="cpu",
+        )
         breakpoint()
         self.model = nn.Sequential(*[o for o in model.children()])
+
     def forward(self, x, **kwargs):
         breakpoint()
         return self.model(x, **kwargs)
+
 
 from typing import Optional
 
@@ -71,9 +84,15 @@ class FootDetector(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
 
-        self.cfg = Config.fromfile("/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py")
+        self.cfg = Config.fromfile(
+            "/mnt/vol_c/code/sketchpad/experiments/hrnet_light_config.py"
+        )
         model = build_posenet(self.cfg.model)
-        load_checkpoint(model, "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth", map_location='cpu')
+        load_checkpoint(
+            model,
+            "/mnt/vol_c/code/sketchpad/naive_litehrnet_18_coco_256x192.pth",
+            map_location="cpu",
+        )
         self.backbone = [o for o in model.children()][0]
         self.head = [o for o in model.children()][1]
 
@@ -83,11 +102,14 @@ class FootDetector(pl.LightningModule):
         output_heatmap = self.head(features)
         return output_heatmap
 
-fd=FootDetector()
+
+fd = FootDetector()
 breakpoint()
 # img = torch.rand(1, 3, 160, 160)
 out = fd(img)
-def infer(model,image):
+
+
+def infer(model, image):
     model.eval()
     results = []
     with torch.no_grad():
@@ -105,27 +127,32 @@ extra = dict(
     stage1=dict(
         num_modules=1,
         num_branches=1,
-        block='BOTTLENECK',
-        num_blocks=(4, ),
-        num_channels=(64, )),
+        block="BOTTLENECK",
+        num_blocks=(4,),
+        num_channels=(64,),
+    ),
     stage2=dict(
         num_modules=1,
         num_branches=2,
-        block='BASIC',
+        block="BASIC",
         num_blocks=(4, 4),
-        num_channels=(32, 64)),
+        num_channels=(32, 64),
+    ),
     stage3=dict(
         num_modules=4,
         num_branches=3,
-        block='BASIC',
+        block="BASIC",
         num_blocks=(4, 4, 4),
-        num_channels=(32, 64, 128)),
+        num_channels=(32, 64, 128),
+    ),
     stage4=dict(
         num_modules=3,
         num_branches=4,
-        block='BASIC',
+        block="BASIC",
         num_blocks=(4, 4, 4, 4),
-        num_channels=(32, 64, 128, 256)))
+        num_channels=(32, 64, 128, 256),
+    ),
+)
 
 model = HRNet(extra=extra)
 inputs = torch.rand(1, 3, 32, 32)
