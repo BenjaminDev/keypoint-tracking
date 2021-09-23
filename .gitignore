@@ -6,4 +6,6 @@
 wandb/*
 outputs/*
 *.onnx
+pytorch_models/.DS_Store
+.DS_Store
 *.mlmodel

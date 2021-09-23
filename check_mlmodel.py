@@ -68,9 +68,9 @@ if __name__ == "__main__":
             # breakpoint()
             image = PIL.Image.open(fn).resize((480, 480))
             heatmaps = model.predict({"input" : image})["4260"]
-            m = nn.Sigmoid()
-            with torch.no_grad():
-                heatmaps = m(torch.tensor(heatmaps)).numpy()
+            # m = nn.Sigmoid()
+            # with torch.no_grad():
+            #     heatmaps = m(torch.tensor(heatmaps)).numpy()
             heatmap = Image.fromarray(np.uint8(cm.viridis(heatmaps.max(axis=0)[0]) * 255))
             # breakpoint()
             # kps=outputs["coordinates"]

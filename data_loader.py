@@ -12,6 +12,7 @@ import scipy.misc
 import pytorch_lightning as pl
 import torch
 from torch._C import dtype
+from torch.cuda import random
 import torch.nn.functional as F
 from albumentations.augmentations.geometric.functional import keypoint_affine
 from albumentations.pytorch import ToTensorV2
@@ -173,6 +174,7 @@ class KeypointsDataset(Dataset):
         self.label_files = sorted(list(self.data_path.glob("*.json")))
         self.target_scale = target_scale # TODO: look at a 'robust' loss so we don't need this to force the issue.
         self.sigma=sigma
+        self.custom_transforms = True
         # self.heatmapper=HeatmapGenerator(480,12)
         self.heatmapper=ModelLabeller(480,14,model_path=Path("/Users/benjamin/projects/keypoint-tracking/outputs/reference/model3.mlmodel"))
         if not any(
@@ -186,6 +188,13 @@ class KeypointsDataset(Dataset):
         self.category_names = Keypoints._fields
         self.transform = transform
         self.train = train
+    def crop_keep_points(image, keypoints):
+        border = 10
+        x_max = max(keypoints,lambda kp:kp[0]) + border
+        x_min = min(keypoints,lambda kp:kp[0]) - border
+        y_max = max(keypoints,lambda kp:kp[1]) + border
+        y_min = min(keypoints,lambda kp:kp[1]) - border
+        return image[x_min:x_max, y_min:y_max, :], keypoints
 
     def __len__(self):
         return len(self.label_files)
@@ -199,6 +208,10 @@ class KeypointsDataset(Dataset):
             visible = torch.tensor(metadata.visible, dtype=torch.float)
             labels = metadata.keypoint_labels
             numeric_labels = [Keypoints._fields_defaults[o] for o in metadata.keypoint_labels]
+
+        if self.custom_transforms:
+            image, keypoints = self.crop_keep_points(image, keypoints)
+
         if self.transform:
             trasformed = self.transform(image=image,keypoints=keypoints, labels=numeric_labels, visible=visible)
             image = torch.tensor(trasformed["image"], dtype=torch.float32).permute(
