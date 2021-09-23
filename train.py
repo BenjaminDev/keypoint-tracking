@@ -33,7 +33,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
 from torchmetrics import MeanAbsoluteError
-
+from losses import JointsMSELoss
 from data_loader import KeypointsDataModule
 from losses import Loss_weighted
 from utils import Keypoints, draw_keypoints
@@ -65,6 +65,7 @@ def build_posenet(cfg):
 
 # criterion = nn.MSELoss(reduction="sum")
 # criterion = wing_loss
+# criterion = JointsMSELoss(use_target_weight=False)
 criterion = Loss_weighted()
 # TODO: Make models into separate class so it's easy to swap them out.
 # class Keypointdetector(pl.LightningModule):
@@ -176,6 +177,7 @@ class Keypointdetector(pl.LightningModule):
         self.model = nn.Sequential(self.backbone, self.head, self.upsample)
 
     def forward(self, x):
+
         output_heatmap = self.model(x)
         return output_heatmap
 
@@ -184,6 +186,7 @@ class Keypointdetector(pl.LightningModule):
         y_hat = self(x)
         loss = criterion(y_hat, targets, M)
         # loss = self.head.get_loss(y_hat, targets, M)
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -346,6 +349,8 @@ class Keypointdetector(pl.LightningModule):
 
 
 import os
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import EarlyStopping
 
 
 @hydra.main(config_path="./experiments", config_name="config_1.yaml")
@@ -363,6 +368,7 @@ def cli_main(cfg: DictConfig):
     # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
     print(data_dirs)
+    early_stopping = EarlyStopping('val_loss')
 
     trainer = pl.Trainer(
         gpus=1,
@@ -375,7 +381,8 @@ def cli_main(cfg: DictConfig):
         gradient_clip_val=0.5,
         # accumulate_grad_batches=3,
         log_every_n_steps=10,  # For large batch_size and small samples
-        resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt",
+        callbacks=[early_stopping],
+        # resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt",
     )
     trainer.tune(
         model,

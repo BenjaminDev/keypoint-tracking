@@ -8,7 +8,7 @@ import albumentations as A
 import coremltools as ct
 import cv2
 import numpy as np
-import onnx
+# import onnx
 import onnxruntime as ort
 import PIL
 import pytorch_lightning as pl
@@ -92,48 +92,48 @@ import torch
 import torch.nn.functional as F
 
 
-class ModelLabeller:
-    # TODO: Get ref model running on linux.
-    def __init__(self, output_res: int, num_joints: int, model_path: Path) -> None:
-        self.output_res = output_res
-        self.num_joints = num_joints
-        self.ort_session = ort.InferenceSession(
-            "/mnt/vol_c/code/sketchpad/coreml_models/reference/model.onnx"
-        )
+# class ModelLabeller:
+#     # TODO: Get ref model running on linux.
+#     def __init__(self, output_res: int, num_joints: int, model_path: Path =None) -> None:
+#         self.output_res = output_res
+#         self.num_joints = num_joints
+#         self.ort_session = ort.InferenceSession(
+#             "/mnt/vol_b/data/real/reference.onnx"
+#         )
 
-    def __call__(self, image_path):
-        image = PIL.Image.open(image_path).resize((160, 160))
-        # image.save("/tmp/input.png")
-        # y_hat = self.model.predict({"input0:0" : image})["output0"]
-        img = np.array(image).astype(np.float32)  # .transpose(0,3,1,2)
-        # np.expand_dims(np.array(image).astype(np.float32).transpose(1,2,0),-1)
-        breakpoint()
-        MEAN = 255 * torch.tensor([0.485, 0.456, 0.406])
-        STD = 255 * torch.tensor([0.229, 0.224, 0.225])
-        img = np.array(
-            torch.tensor(img.transpose(2, 1, 0)) * STD[:, None, None]
-            + MEAN[:, None, None]
-        )
-        img = np.expand_dims(img, 0).transpose(0, 2, 3, 1)
-        y_hat = self.ort_session.run(None, {"input0:0": img})[
-            1
-        ]  # np.random.randn(10,  160, 160,3).astype(np.float32)})
-        y_hat = y_hat.transpose(3, 1, 2, 0).squeeze(-1)
-        # y_hat = np.array(torch.sigmoid(torch.tensor(y_hat)/y_hat.max()))*255
-        y_hat = np.concatenate(
-            [y_hat[:6, ...], y_hat[7:13, ...]]
-        )  # using only 6 points per foot
-        hms = np.zeros((12, 480, 480), dtype=float)
-        for i, hm in enumerate(y_hat):
-            img = PIL.Image.fromarray(hm).convert("L").resize((480, 480))
-            # img.save(f"/tmp/check_{i}.png")
-            hms[i] = np.array(img)
-        M = np.zeros_like(hms)
-        for i in range(len(M)):
-            M[i] = grey_dilation(hms[i], size=(3, 3))
+#     def __call__(self, image_path):
+#         image = PIL.Image.open(image_path).resize((160, 160))
+#         # image.save("/tmp/input.png")
+#         # y_hat = self.model.predict({"input0:0" : image})["output0"]
+#         img = np.array(image).astype(np.float32)  # .transpose(0,3,1,2)
+#         # np.expand_dims(np.array(image).astype(np.float32).transpose(1,2,0),-1)
+#         breakpoint()
+#         MEAN = 255 * torch.tensor([0.485, 0.456, 0.406])
+#         STD = 255 * torch.tensor([0.229, 0.224, 0.225])
+#         img = np.array(
+#             torch.tensor(img.transpose(2, 1, 0)) * STD[:, None, None]
+#             + MEAN[:, None, None]
+#         )
+#         img = np.expand_dims(img, 0).transpose(0, 2, 3, 1)
+#         y_hat = self.ort_session.run(None, {"input0:0": img})[
+#             1
+#         ]  # np.random.randn(10,  160, 160,3).astype(np.float32)})
+#         y_hat = y_hat.transpose(3, 1, 2, 0).squeeze(-1)
+#         # y_hat = np.array(torch.sigmoid(torch.tensor(y_hat)/y_hat.max()))*255
+#         y_hat = np.concatenate(
+#             [y_hat[:6, ...], y_hat[7:13, ...]]
+#         )  # using only 6 points per foot
+#         hms = np.zeros((12, 480, 480), dtype=float)
+#         for i, hm in enumerate(y_hat):
+#             img = PIL.Image.fromarray(hm).convert("L").resize((480, 480))
+#             # img.save(f"/tmp/check_{i}.png")
+#             hms[i] = np.array(img)
+#         M = np.zeros_like(hms)
+#         for i in range(len(M)):
+#             M[i] = grey_dilation(hms[i], size=(3, 3))
 
-        M = np.where(M >= 0.5, 1, 0)
-        return hms, M
+#         M = np.where(M >= 0.5, 1, 0)
+#         return hms, M
 
 
 class KeypointsDataset(Dataset):
@@ -166,11 +166,13 @@ class KeypointsDataset(Dataset):
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):
+            broken_files=[]
             for l, i in zip(self.label_files, self.image_files):
                 if l.stem != i.stem:
                     print(f"{l.stem} {i.stem}")
-            breakpoint()
-            raise ValueError("Image files and label files mismatch")
+                    broken_files.append((l.stem,i.stem))
+                    breakpoint()
+            raise ValueError(f"Image files and label files mismatch: {broken_files}")
         self.category_names = Keypoints._fields
         self.transform = transform
         self.train = train
@@ -313,17 +315,14 @@ class KeypointsDataModule(pl.LightningDataModule):
             [
                 # A.RandomCrop(*input_size),
                 A.SafeRotate(limit=(-180, 180), p=0.8, border_mode=cv2.BORDER_CONSTANT),
-                A.Perspective(scale=(0.05, 0.1), p=1.0),
+                A.Perspective(scale=(0.05, 0.1), p=1.0), # This might be a problem.
                 A.Resize(*input_size),
-                A.OneOf(
-                    [
                         A.ColorJitter(),
                         A.ChannelShuffle(p=0.2),
                         A.RGBShift(p=0.2),
                         A.RandomBrightnessContrast(),
-                    ],
-                    p=0.4,
-                ),
+
+
                 A.Normalize(
                     mean=torch.tensor([0.485, 0.456, 0.406]),
                     std=torch.tensor([0.229, 0.224, 0.225]),
@@ -419,12 +418,13 @@ class KeypointsDataModule(pl.LightningDataModule):
 if __name__ == "__main__":
     data_dirs = ["/mnt/vol_b/training_data/clean/0014-IMG_1037"]
     input_size = (160, 160)
+    # ml = ModelLabeller(160,12)
     dm = KeypointsDataModule(data_dirs, input_size, batch_size=1)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
     dl = dm.train_dataloader()
-    for o, _ in dl:
-        pass
+    # for o, _ in dl:
+    #     pass
 
     breakpoint()
     sample, target, M = dl.dataset.datasets[0].plot_sample(10)
