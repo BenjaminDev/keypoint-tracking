@@ -20,7 +20,11 @@ def verify_image(image_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."
+        description="""
+        Splits a folder of images into a train, validation and test set.
+        Verify's that all images are readable and not corrupt. This takes some time but is run in parallel.
+        CAUTION: if images are sequential frames think carefully about how you want to split.
+        """
     )
     parser.add_argument(
         "--src",

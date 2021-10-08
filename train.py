@@ -1,5 +1,6 @@
 import argparse
 import math
+import os
 from collections import defaultdict
 from re import S
 from typing import Dict, Tuple
@@ -11,8 +12,6 @@ import plotly.graph_objects as go
 import pytorch_lightning as pl
 import timm
 import torch
-
-# criterion = FocalLoss({"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'})
 import wandb
 from kornia.losses.focal import FocalLoss
 from matplotlib import cm
@@ -25,17 +24,17 @@ from mmpose.models.builder import BACKBONES, HEADS, LOSSES, NECKS, POSENETS
 from numpy import heaviside
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
-from pytorch_lightning import callbacks
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning import Trainer, callbacks
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.cli import LightningCLI
 from torch import nn, optim
 from torch.nn import functional as F
 from torch.nn.modules.conv import Conv2d
 from torchmetrics import MeanAbsoluteError
-from losses import JointsMSELoss
+
 from data_loader import KeypointsDataModule
-from losses import Loss_weighted
+from losses import JointsMSELoss, Loss_weighted
 from utils import Keypoints, draw_keypoints
 
 
@@ -63,88 +62,8 @@ def build_posenet(cfg):
     return build(cfg, POSENETS)
 
 
-# criterion = nn.MSELoss(reduction="sum")
-# criterion = wing_loss
-# criterion = JointsMSELoss(use_target_weight=False)
 criterion = Loss_weighted()
-# TODO: Make models into separate class so it's easy to swap them out.
-# class Keypointdetector(pl.LightningModule):
-#     def __init__(
-#         self,
-#         config: DictConfig,
-#         output_image_size: Tuple[int, int],
-#         inferencing: bool = False,
-#         num_keypoints: int = 12,
-#         learning_rate: float = 0.0001,
-#     ):
-#         super().__init__()
-#         self.save_hyperparameters()
-#         self.learning_rate = learning_rate
-#         self.inferencing = inferencing
-#         self.features = timm.create_model(
-#             "hrnet_w18_small",
-#             pretrained=True,
-#             features_only=True,
-#             num_classes=0,
-#             global_pool="",
-#         )
-#         self.valdation_count = 0
-#         final_inp_channels = 960
-#         BN_MOMENTUM = 0.01
-#         FINAL_CONV_KERNEL = 1
-#         num_points = 12
-#         self.head = nn.Sequential(
-#             nn.Conv2d(
-#                 in_channels=final_inp_channels,
-#                 out_channels=final_inp_channels,
-#                 kernel_size=1,
-#                 # stride=1,
-#                 dilation=2,
-#                 padding=1,
-#             ),
-#             nn.BatchNorm2d(final_inp_channels, momentum=BN_MOMENTUM),
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(
-#                 in_channels=final_inp_channels,
-#                 out_channels=num_points,
-#                 kernel_size=FINAL_CONV_KERNEL,
-#                 dilation=2,
-#                 stride=1,
-#                 padding=1,
-#             ),
-#             # nn.Upsample(size=(output_image_size[0],output_image_size[1] ), mode="bilinear", align_corners=False),
-#             nn.ReLU(inplace=True),
-#             nn.ConvTranspose2d(
-#                 in_channels=num_points, out_channels=num_points, kernel_size=2, stride=1
-#             ),
-#             nn.Upsample(size=(480, 480), mode="bilinear", align_corners=False),
-#         )
 
-#     def forward(self, x):
-
-#         x = self.features(x)
-
-#         height, width = x[0].size(2), x[0].size(3)
-#         x1 = F.interpolate(
-#             x[1], size=(height, width), mode="bilinear", align_corners=False
-#         )
-#         x2 = F.interpolate(
-#             x[2], size=(height, width), mode="bilinear", align_corners=False
-#         )
-#         x3 = F.interpolate(
-#             x[3], size=(height, width), mode="bilinear", align_corners=False
-#         )
-#         x = torch.cat([x[0], x1, x2, x3], 1)
-#         if self.inferencing:
-#             preds = self.head(x)
-#             return preds
-#         return self.head(x)
-
-#     def training_step(self, batch, batch_idx):
-#         x, (targets, M, keypoints, visible, labels, captions) = batch
-#         y_hat = self(x)
-#         loss = criterion(y_hat, targets, M)
-#         return loss
 mean_absolute_error = MeanAbsoluteError()
 
 
@@ -194,10 +113,7 @@ class Keypointdetector(pl.LightningModule):
         x, (targets, M, keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
         y_hat = self(x)
-        #
-
         loss = criterion(y_hat, targets, M)
-        # loss = self.head.get_loss(y_hat, targets, M)
         self.log("val_loss", loss)
         if len(labels[0]) != (len(keypoints[0]) // 2):
             raise ValueError("Data is broken. missing labels")
@@ -208,11 +124,8 @@ class Keypointdetector(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         x, (targets, M, keypoints, visible, labels, captions) = batch
         keypoints = keypoints.view(keypoints.size(0), -1)
-
         y_hat = self(x)
-
         loss = criterion(y_hat, targets, M)
-        # loss = loss*visible
         self.log("test_loss", loss)
 
     def configure_optimizers(self):
@@ -247,9 +160,6 @@ class Keypointdetector(pl.LightningModule):
         )
 
         for batch_of_outputs in all_batches_of_outputs[::10]:
-            #
-            # if len(outputs) != 5:
-            #
             for image, y_hat, target, M, visible, labels, caption in zip(
                 batch_of_outputs[0],
                 batch_of_outputs[1],
@@ -299,7 +209,6 @@ class Keypointdetector(pl.LightningModule):
                     visible=visible,
                     show_all=True,
                 )
-                # if denormalize:
                 pred_images.append(res_val)
 
                 target_keypoints = []
@@ -348,11 +257,6 @@ class Keypointdetector(pl.LightningModule):
         )
 
 
-import os
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping
-
-
 @hydra.main(config_path="./experiments", config_name="config_1.yaml")
 def cli_main(cfg: DictConfig):
     wb = cfg.wb
@@ -364,11 +268,9 @@ def cli_main(cfg: DictConfig):
 
     model = Keypointdetector(config=cfg, learning_rate=0.017378008287493765)
     wandb.watch(model)
-    # checkpoint_callback = ModelCheckpoint(dirpath='/mnt/vol_c/models/', save_top_k=3)
-    # `mc = ModelCheckpoint(monitor='your_monitor')` and use it as `Trainer(callbacks=[mc])`
     data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
     print(data_dirs)
-    early_stopping = EarlyStopping('val_loss')
+    early_stopping = EarlyStopping("val_loss")
 
     trainer = pl.Trainer(
         gpus=1,
@@ -382,7 +284,7 @@ def cli_main(cfg: DictConfig):
         # accumulate_grad_batches=3,
         log_every_n_steps=10,  # For large batch_size and small samples
         callbacks=[early_stopping],
-        resume_from_checkpoint="/mnt/vol_c/models/wf/1nf45bl5/checkpoints/epoch=10-step=2133.ckpt",
+        # resume_from_checkpoint="/mnt/vol_c/models/wf/1nf45bl5/checkpoints/epoch=10-step=2133.ckpt",
     )
     trainer.tune(
         model,

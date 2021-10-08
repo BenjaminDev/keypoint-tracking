@@ -136,12 +136,6 @@ if __name__ == "__main__":
         raise ValueError(
             f"tags must be different: rgb = {args.rgb_tag} and mask = {args.mask}"
         )
-    # if args.rgb_tag == '':
-    #     rgb_tag = f'[!{args.mask_tag}]'
-    # else:
-    #     rgb_tag = args.rgb_tag
-    # tmp = list(args.src_dir.glob(f"*{rgb_tag}*.exr"))
-    # breakpoint()
     n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
     Parallel(n_jobs=n_jobs)(
         delayed(process_data)(exr_file, args)
@@ -149,61 +143,3 @@ if __name__ == "__main__":
             [o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][: args.num]
         )
     )
-    # for i, exr_file in enumerate(tqdm([o for o in args.src_dir.glob(f"{args.rgb_tag}*.exr")][:args.num])):
-
-    #     # Read "RGB" exr file
-    #     try:
-    #         exr_file_discriptor = OpenEXR.InputFile(os.fsdecode(exr_file))
-    #     except OSError:
-    #         continue
-    #     dw = exr_file_discriptor.header()["dataWindow"]
-    #     size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
-
-    #     # Get RGB and header
-    #     image, header = exr2rgb(exr_file_discriptor, size)
-    #     # Get Visible keypoints
-    #     mask = exr_channel_to_np(exr_file_discriptor, size, "ObjectID")
-    #     _, visible = mask_to_keypoints(mask)
-    #     bounding_boxes = mask_to_bounding_boxes(mask)
-    #     # Read "MASK" exr file
-    #     meta_file = os.fsdecode(exr_file).replace(args.rgb_tag, args.mask_tag)
-    #     exr_file_discriptor = OpenEXR.InputFile(os.fsdecode(meta_file))
-    #     dw = exr_file_discriptor.header()["dataWindow"]
-    #     size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
-    #     # Get all keypoints
-    #     mask = exr_channel_to_np(exr_file_discriptor, size, "ObjectID")
-    #     keypoints, _ = mask_to_keypoints(mask)
-
-    #     # Set source
-    #     source = {
-    #         "main": f"{exr_file.stem}{exr_file.suffix}",
-    #         "object_id": f"{Path(meta_file).stem}{Path(meta_file).suffix}",
-    #         "image": f"{exr_file.stem}{args.ext}",
-    #     }
-    #     # Form metadata
-    #     meta = MetaData(
-    #         source=source,
-    #         keypoints=keypoints,
-    #         visible=visible,
-    #         bounding_boxes=bounding_boxes,
-    #     )
-
-    #     # Reduces dynamic range to 8bit.
-    #     img = Image.fromarray(np.clip(image, a_min=0, a_max=255).astype("uint8"))
-    #     # Write image to destination directory
-    #     img.save(f"{os.fsdecode(args.dst_dir)}/{exr_file.stem}{args.ext}")
-    #     # Write meta data to destination directory
-    #     with open(f"{os.fsdecode(args.dst_dir)}/{exr_file.stem}.json", mode="w") as fp:
-    #         fp.write(meta.json(indent=4))
-
-    #     # Read back and annotate to verify
-    #     (args.dst_dir / "annotated").mkdir(parents=True, exist_ok=True)
-    #     read_meta_back = read_meta(f"{os.fsdecode(args.dst_dir)}/{exr_file.stem}.json")
-    #     img = draw_bounding_box(img, read_meta_back.bounding_boxes)
-    #     draw_keypoints(
-    #         img,
-    #         read_meta_back.keypoints,
-    #         read_meta_back.keypoint_labels,
-    #         read_meta_back.visible,
-    #         show_all=True,
-    #     ).save(f"{os.fsdecode(args.dst_dir)}/annotated/anno_{exr_file.stem}{args.ext}")

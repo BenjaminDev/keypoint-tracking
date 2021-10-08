@@ -24,7 +24,11 @@ from utils import Keypoints, draw_keypoints
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Pre-processes exr file from Wearfits and generates a folder of images and json meta data files."
+        description="""
+        Does 2 things:
+            1) Converts a model from pytorch_lightning checkpoint .ckpt to a pytorch traced model .pt (run on linux)
+            2) Converts a model from pytorch traced .pt to a coreml model. (run on macos)
+        """
     )
     parser.add_argument(
         "--mpath",
@@ -73,7 +77,6 @@ if args.trace:
     ).eval()
     input_batch = torch.rand(1, 3, *input_size)
     trace = torch.jit.trace(traceable_model, input_batch)
-    # TODO: Verify the scale an bias - should match training normalizations (Imagenet stats currently)
     scale = 1.0 / (0.226 * 255.0)
     red_bias = -(0.485 * 255.0) * scale
     green_bias = -(0.456 * 255.0) * scale
@@ -89,15 +92,14 @@ if args.trace:
                 scale=scale,
             )
         ],
-        # compute_precision=ct.precision.FLOAT16) TEST THIS!
     )
 
     mlmodel.save(os.fsdecode(args.model_dir_dst / f"heatmap_only.mlmodel"))
 
-# Load a tests image and do manual decoding of the heatmaps
+
 existing_model = ct.utils.load_spec(
     os.fsdecode(args.model_dir_dst / f"heatmap_only.mlmodel")
-)  # torch.Size([12, 480, 480])
+)  
 heatmap_model = ct.models.MLModel(existing_model)
 image = PIL.Image.open(test_image_path).resize(input_size)
 outputs = heatmap_model.predict({"input": image})

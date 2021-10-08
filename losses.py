@@ -4,6 +4,7 @@ import torch.nn as nn
 
 
 class JointsMSELoss(nn.Module):
+    # Addapted from open-mmlab not used. Experimental
     def __init__(self, use_target_weight):
         super(JointsMSELoss, self).__init__()
         self.criterion = nn.MSELoss(reduction="mean")
