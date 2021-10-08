@@ -21,10 +21,10 @@ from torchvision.transforms import ToTensor
 image_to_tensor = T.Compose(
     [
         T.ToTensor(),
-        T.Normalize(
-            mean=torch.tensor([0.485, 0.456, 0.406]),
-            std=torch.tensor([0.229, 0.224, 0.225]),
-        ),
+        # T.Normalize(
+        #     mean=torch.tensor([0.485, 0.456, 0.406]),
+        #     std=torch.tensor([0.229, 0.224, 0.225]),
+        # ),
         T.ConvertImageDtype(torch.uint8),
     ]
 )

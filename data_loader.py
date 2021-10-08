@@ -92,7 +92,8 @@ import torch
 import torch.nn.functional as F
 
 
-# class ModelLabeller:
+class ModelLabeller:
+    pass
 #     # TODO: Get ref model running on linux.
 #     def __init__(self, output_res: int, num_joints: int, model_path: Path =None) -> None:
 #         self.output_res = output_res
@@ -172,7 +173,7 @@ class KeypointsDataset(Dataset):
                     print(f"{l.stem} {i.stem}")
                     broken_files.append((l.stem,i.stem))
                     breakpoint()
-            raise ValueError(f"Image files and label files mismatch: {broken_files}")
+            raise ValueError(f"Image files and label files mismatch: {broken_files} in {self.data_path}")
         self.category_names = Keypoints._fields
         self.transform = transform
         self.train = train

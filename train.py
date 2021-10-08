@@ -372,7 +372,7 @@ def cli_main(cfg: DictConfig):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=1000,
+        max_epochs=100000,
         logger=wandb_logger,
         # auto_lr_find=True,
         track_grad_norm=2,
@@ -382,7 +382,7 @@ def cli_main(cfg: DictConfig):
         # accumulate_grad_batches=3,
         log_every_n_steps=10,  # For large batch_size and small samples
         callbacks=[early_stopping],
-        # resume_from_checkpoint="/mnt/vol_c/models/wf/37isna1h/checkpoints/epoch=59-step=1430.ckpt",
+        resume_from_checkpoint="/mnt/vol_c/models/wf/1nf45bl5/checkpoints/epoch=10-step=2133.ckpt",
     )
     trainer.tune(
         model,
