@@ -1,7 +1,7 @@
 from datetime import time
 import coremltools as ct
 from pathlib import Path
-from coremltools import models
+# from coremltools import models
 from tqdm import tqdm
 from utils import draw_keypoints, Keypoints, image_to_tensor
 import PIL
@@ -22,6 +22,20 @@ from utils import (MetaData, draw_bounding_box, draw_keypoints, exr2rgb,
                    exr_channel_to_np, mask_to_bounding_boxes,
                    mask_to_keypoints, read_meta)
 import shutil
+import subprocess
+import shlex
+def convert_video_to_frames(video_path:Path,height:int=480)->Path:
+    output_dir = video_path.parent/video_path.stem
+    output_dir.mkdir(exist_ok=True)
+    video_path = shutil.move(os.fsdecode(video_path), os.fsdecode(output_dir/f"{video_path.stem}{video_path.suffix}"))
+    cmd = f"ffmpeg -i \"{os.fsdecode(video_path)}\" -r 25 -vf \"scale=-1:{height}\" \"{os.fsdecode(output_dir)}/frame_%03d.png\""
+    subprocess.check_call(shlex.split(cmd))
+    return output_dir
+
+def archive_frames(output_dir:Path):
+    folder_name = output_dir.stem
+    cmd = f"tar -czf {folder_name}.tar --exclude=\"{folder_name}/inspect\" {folder_name}"
+    subprocess.check_call(shlex.split(cmd), cwd=output_dir.parent)
 
 def label_data(i, fn, args):
     # spec = ct.utils.load_spec(os.fsdecode(model_path))
@@ -31,7 +45,7 @@ def label_data(i, fn, args):
     # breakpoint()
     # y_hat=torch.tensor(y_hat).squeeze(0).permute(2,1,0)
     y_hat = y_hat.transpose(0,3,2,1)
-    breakpoint()
+    # breakpoint()
     y_hat = torch.tensor(np.concatenate([y_hat[:,:6,...], y_hat[:,7:13,...]])).reshape(1,12,160,160)
     # breakpoint()
     keypoints=subpix.spatial_soft_argmax.spatial_soft_argmax2d(y_hat, normalized_coordinates=False).squeeze(0)
@@ -79,6 +93,12 @@ if __name__ == "__main__":
         help="Path to the .png files",
     )
     parser.add_argument(
+        "--video",
+        dest="video_path",
+        type=Path,
+        help="Path to video file",
+    )
+    parser.add_argument(
        '--annotate', action='store_true',
         dest="annotate",
         default=False,
@@ -91,19 +111,23 @@ if __name__ == "__main__":
 
     spec = ct.utils.load_spec(os.fsdecode(args.model_path))
     model = ct.models.MLModel(spec)
+    for video_path in args.video_path.glob("*.MOV"):
+        print(video_path)
+        args.data_dir = convert_video_to_frames(video_path)
+        image_files = list(args.data_dir.glob("*.png"))
+        (args.data_dir/"inspect").mkdir(exist_ok=True)
 
-    image_files = list(args.data_dir.glob("*.png"))
-    (args.data_dir/"inspect").mkdir(exist_ok=True)
+        label_names = [Keypoints._fields[o-1] for o in range(12)]
+        i=0
 
-    label_names = [Keypoints._fields[o-1] for o in range(12)]
-    i=0
+        # for i, fn in enumerate(tqdm(image_files)):
+        #     label_data(i, fn,args.model_path)
 
-    # for i, fn in enumerate(tqdm(image_files)):
-    #     label_data(i, fn,args.model_path)
-
-    n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
-    set_loky_pickler("cloudpickle")
-    Parallel(n_jobs=n_jobs, prefer="threads")(delayed(label_data)(i, fn,args) for i, fn in enumerate(tqdm(image_files)))
+        n_jobs = os.cpu_count() if not os.environ.get("PRE_DEBUG", False) else 1
+        set_loky_pickler("cloudpickle")
+        Parallel(n_jobs=n_jobs, prefer="threads")(delayed(label_data)(i, fn,args) for i, fn in enumerate(tqdm(image_files)))
+        archive_frames(args.data_dir)
+        
     # for fn in tqdm(image_files):
     #     i+=1
         # breakpoint()
