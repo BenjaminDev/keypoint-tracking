@@ -170,7 +170,7 @@ else:
 
 builder.spec.description.metadata.shortDescription = "Shoe keypoint detector"
 builder.spec.description.metadata.author = "Boulderama"
-builder.spec.description.metadata.versionString = f"{args.model_path.stem} - {datetime.now().isoformat()}"
+builder.spec.description.metadata.versionString = f"{args.model_path.stem} - {args.model_path.parent} - {datetime.now().isoformat()}"
 
 adjusted_model = ct.models.MLModel(builder.spec)
 adjusted_model.save(os.fsdecode(args.model_dir_dst/f"Pipeline.mlmodel"))
