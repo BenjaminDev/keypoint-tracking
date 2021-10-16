@@ -125,7 +125,6 @@ class KeypointsDataset(Dataset):
                 if l.stem != i.stem:
                     print(f"{l.stem} {i.stem}")
                     broken_files.append((l.stem, i.stem))
-                    breakpoint()
             raise ValueError(
                 f"Image files and label files mismatch: {broken_files} in {self.data_path}"
             )
@@ -134,7 +133,7 @@ class KeypointsDataset(Dataset):
         self.train = train
 
     def crop_keep_points(self, image, keypoints):
-        if random() < 0.2:
+        if random() < 0.7:
             return image, keypoints
         h, w, _ = image.shape
         total_border = randint(10, max(w, h))
@@ -253,17 +252,18 @@ class KeypointsDataset(Dataset):
 
 class KeypointsDataModule(pl.LightningDataModule):
     def __init__(
-        self, data_dirs: List[str], input_size: Tuple[int, int], batch_size: int
+        self, train_data_dirs: List[str], val_data_dirs: List[str], input_size: Tuple[int, int], batch_size: int
     ):
         super().__init__()
-        self.data_dirs = data_dirs
+        self.train_data_dirs = train_data_dirs
+        self.val_data_dirs = val_data_dirs
         self.input_size = input_size
         self.batch_size = batch_size
         self.train_transforms = A.Compose(
             [
                 # A.RandomCrop(*input_size),
                 A.SafeRotate(limit=(-180, 180), p=0.8, border_mode=cv2.BORDER_CONSTANT),
-                A.Perspective(scale=(0.05, 0.1), p=1.0),  # This might be a problem.
+                # A.Perspective(scale=(0.05, 0.1), p=1.0),  # This might be a problem.
                 A.Resize(*input_size),
                 A.ColorJitter(),
                 A.ChannelShuffle(p=0.2),
@@ -301,18 +301,19 @@ class KeypointsDataModule(pl.LightningDataModule):
                         train=True,
                         transform=self.train_transforms,
                     )
-                    for data_dir in self.data_dirs
+                    for data_dir in self.train_data_dirs
                 ]
             )
             self.keypoints_val = ConcatDataset(
                 [
                     KeypointsDataset(
-                        data_dir + "/val",
+                        # data_dir + "/val",
+                        data_dir,
                         image_size=self.input_size,
                         train=True,
                         transform=self.train_transforms,
                     )
-                    for data_dir in self.data_dirs
+                    for data_dir in self.val_data_dirs
                 ]
             )
         if stage == "test" or stage is None:
@@ -324,7 +325,7 @@ class KeypointsDataModule(pl.LightningDataModule):
                         train=True,
                         transform=self.test_transforms,
                     )
-                    for data_dir in self.data_dirs
+                    for data_dir in self.val_data_dirs
                 ]
             )
 

@@ -266,7 +266,7 @@ def cli_main(cfg: DictConfig):
     )
     cfg.model.input_size
 
-    model = Keypointdetector(config=cfg, learning_rate=0.017378008287493765)
+    model = Keypointdetector(config=cfg, learning_rate=cfg.model.learning_rate)
     wandb.watch(model)
     data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
     print(data_dirs)
@@ -274,9 +274,9 @@ def cli_main(cfg: DictConfig):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=100000,
+        max_epochs=cfg.trainer.max_epochs,
         logger=wandb_logger,
-        # auto_lr_find=True,
+        auto_lr_find=cfg.trainer.auto_lr_find,
         track_grad_norm=2,
         # precision=16,
         stochastic_weight_avg=True,
@@ -284,7 +284,7 @@ def cli_main(cfg: DictConfig):
         # accumulate_grad_batches=3,
         log_every_n_steps=10,  # For large batch_size and small samples
         callbacks=[early_stopping],
-        # resume_from_checkpoint="/mnt/vol_c/models/wf/1nf45bl5/checkpoints/epoch=10-step=2133.ckpt",
+        resume_from_checkpoint=cfg.trainer.resume_from_checkpoint,
     )
     trainer.tune(
         model,

@@ -5,17 +5,22 @@ wb:
 
 data:
   base_dir: /mnt/vol_b/training_data/clean
-  sets:
+  val_sets:
+    - 0015-IMG_1030
+    - 0019-IMG_1043
+    - 0028-IMG_1075
+    - 0036-IMG_4551_CHRIS
+    - 0054-VID20211011213441
+    - 0052-IMG_2673
+  train_sets:
     - 0011-IMG_1029
     - 0012-IMG_1033
     - 0013-IMG_1027
     - 0013-IMG_1036
     - 0014-IMG_1037
-    - 0015-IMG_1030
     - 0016-IMG_1031
     - 0017-IMG_1032
     - 0018-IMG_1044
-    - 0019-IMG_1043
     - 0020-IMG_1045
     - 0021-IMG_1047
     - 0022-IMG_1067
@@ -24,7 +29,6 @@ data:
     - 0025-IMG_1072
     - 0026-IMG_1073
     - 0027-IMG_1074
-    - 0028-IMG_1075
     - 0029-IMG_1076
     - 0030-IMG_1078
     - 0031-IMG_1079
@@ -32,6 +36,25 @@ data:
     - 0033-IMG_1082
     - 0034-IMG_1083
     - 0035-IMG_1084
+    - 0037-IMG_4555_CHRIS
+    - 0038-IMG_4556_CHRIS
+    - 0039-IMG_4561_CHRIS
+    - 0040-IMG_4562_CHRIS
+    - 0041-IMG_4563_CHRIS
+    - 0042-IMG_2658
+    - 0043-IMG_2660
+    - 0044-IMG_2674
+    - 0045-IMG_2677
+    - 0046-VID20211011213524
+    # - 0047-VID20211011213632
+    - 0048-VID20211014121626
+    - 0049-IMG_2655
+    - 0050-IMG_2657
+    - 0051-IMG_2659
+    - 0053-IMG_2676
+    - 0055-VID20211011213606
+    - 0056-VID20211014121605
+
     # - 0004-bare-feet/source/v001
     # - 0003-socks/source/v001
     # - 0004-bare-feet/source/v001
@@ -42,8 +65,10 @@ data:
 
 model:
   input_size: [160, 160]
+  learning_rate: 0.025118864315095822
 
 trainer:
-  max_epochs: 400
+  max_epochs: 4000
   batch_size: 64
-
+  auto_lr_find: false
+  resume_from_checkpoint: "/mnt/vol_c/models/wf/3487imx1/checkpoints/epoch=3-step=1067.ckpt"
