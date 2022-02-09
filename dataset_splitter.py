@@ -56,6 +56,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     image_files = sorted(list(args.src_dir.glob(f"*{args.ext}")))
     json_files = sorted(list(args.src_dir.glob(f"*.json")))
+
     for json_file, image_file in tqdm(
         zip(json_files, image_files), total=len(image_files)
     ):
@@ -72,7 +73,8 @@ if __name__ == "__main__":
     total_num_val_and_test = int(total * (args.pct_val + args.pct_test))
     total_num_val = int(total * (args.pct_val))
 
-    sample_indices_val_and_test = sample(range(0, total), total_num_val_and_test)
+    # sample_indices_val_and_test = sample(range(0, total), total_num_val_and_test)
+    sample_indices_val_and_test = list(range(0, total_num_val_and_test)) # Hack to grab from the start for validation.
     sample_indices_val = sample_indices_val_and_test[:total_num_val]
     sample_indices_test = sample_indices_val_and_test[total_num_val:]
     if (args.src_dir / "val").exists() and any((args.src_dir / "val").iterdir()):

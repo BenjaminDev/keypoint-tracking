@@ -79,10 +79,11 @@ if args.trace:
     trace = torch.jit.trace(traceable_model, input_batch)
     final = trace(input_batch)
     assert (original == final).sum() == final.numel()
-    torch.jit.save(trace, os.fsdecode(args.model_dir_dst / "traced_model.pt"))
+
+    torch.jit.save(trace, os.fsdecode(args.model_dir_dst / f"{args.model_path.stem}_traced_model.pt"))
 
 else:
-    trace = torch.jit.load(os.fsdecode(args.model_dir_dst / "traced_model.pt"))
+    trace = torch.jit.load(os.fsdecode(args.model_dir_dst / f"{args.model_path.stem}_traced_model.pt"))
     traceable_model = Keypointdetector.load_from_checkpoint(
         os.fsdecode(args.model_path), output_image_size=input_size, inferencing=True
     ).eval()
@@ -101,7 +102,7 @@ transform = torchvision.transforms.Compose(
 )
 import PIL
 
-image_path = "/mnt/vol_b/training_data/clean/0014-IMG_1037/frame_002.png"
+image_path = "/mnt/vol_c/code/sketchpad/test_data/frame_001.jpg"
 test_image = transform(PIL.Image.open(image_path).resize(input_size)).unsqueeze(0)
 original = traceable_model(test_image).squeeze(0)
 y_hat = trace(test_image).squeeze(0)
@@ -121,3 +122,5 @@ res = draw_keypoints(
     image, manual_decoded_keypoints, labels=label_names, show_labels=True, show_all=True
 )
 res.save(os.fsdecode(args.model_dir_dst / f"manual_decode_out.png"))
+
+

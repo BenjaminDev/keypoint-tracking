@@ -268,13 +268,16 @@ def cli_main(cfg: DictConfig):
 
     model = Keypointdetector(config=cfg, learning_rate=cfg.model.learning_rate)
     wandb.watch(model)
-    data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.sets]
-    print(data_dirs)
+    train_data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.train_sets]
+    print(train_data_dirs)
+    val_data_dirs = [os.path.join(cfg.data.base_dir, o) for o in cfg.data.val_sets]
+    print(val_data_dirs)
     early_stopping = EarlyStopping("val_loss")
 
     trainer = pl.Trainer(
         gpus=1,
         max_epochs=cfg.trainer.max_epochs,
+        min_epochs=cfg.trainer.min_epochs,
         logger=wandb_logger,
         auto_lr_find=cfg.trainer.auto_lr_find,
         track_grad_norm=2,
@@ -284,12 +287,13 @@ def cli_main(cfg: DictConfig):
         # accumulate_grad_batches=3,
         log_every_n_steps=10,  # For large batch_size and small samples
         callbacks=[early_stopping],
-        resume_from_checkpoint=cfg.trainer.resume_from_checkpoint,
+        # resume_from_checkpoint=cfg.trainer.resume_from_checkpoint,
     )
     trainer.tune(
         model,
         KeypointsDataModule(
-            data_dirs=data_dirs,
+            train_data_dirs=train_data_dirs,
+            val_data_dirs=val_data_dirs,
             input_size=cfg.model.input_size,
             batch_size=cfg.trainer.batch_size,
         ),
@@ -297,7 +301,8 @@ def cli_main(cfg: DictConfig):
     trainer.fit(
         model,
         KeypointsDataModule(
-            data_dirs=data_dirs,
+            train_data_dirs=train_data_dirs,
+            val_data_dirs=val_data_dirs,
             input_size=cfg.model.input_size,
             batch_size=cfg.trainer.batch_size,
         ),
