@@ -164,6 +164,69 @@ def mask_to_keypoints(mask) -> Tuple[List[Tuple[int, int]], List[bool]]:
     return [(int(o[0]), int(o[1])) for o in keypoints], visible
 
 
+def read_points(file_path:Path, image_width:int, image_height:int)->MetaData:
+    """
+    Example format.
+    0 0.45956998476867283 0.6756063343557661
+    1 0.44649503318446965 0.6340684768375017
+    2 0.45249343498238637 0.716182002174057
+    3 0.4895965088945922 0.7022414458958639
+    4 0.45104839205424363 0.6504334329622865
+    5 0.4741898906599348 0.6466090714907186
+    6 0.4391376336224682 0.7048829118367517
+    7 0.34443298708636005 0.8072160740155508
+    8 0.3446897703129026 0.7569579102678341
+    9 0.37186201839808525 0.8524181148647286
+    10 0.3139556594439243 0.8455881238613278
+    11 0.3460752556017632 0.7829192984384293
+    12 0.3116704937690932 0.7691822077990981
+    13 0.3855637577944533 0.8380117445237951
+    """
+    # TODO: Label 7 keypoints per foot.
+    keypoint_labels = [
+        "RIGHT_SHOE_FRONT",
+        "RIGHT_SHOE_TOP",
+        "RIGHT_SHOE_OUTER_SIDE",
+        "RIGHT_SHOE_INNER_SIDE",
+        "RIGHT_SHOE_BACK",
+        "RIGHT_SHOE_ANKLE",
+        "RIGHT_SHOE_UNKOWN",
+        "LEFT_SHOE_BACK",
+        "LEFT_SHOE_ANKLE",
+        "LEFT_SHOE_OUTER_SIDE",
+        "LEFT_SHOE_TOP",
+        "LEFT_SHOE_INNER_SIDE",
+        "LEFT_SHOE_FRONT",
+        "LEFT_SHOE_UNKOWN"
+    ]
+    with open(file_path, mode="r") as fp:
+        lines = fp.readlines()
+    keypoints = []
+    for line in lines:
+        _, x, y  = line.split()
+        x = float(x)
+        y = float(y)
+        keypoints.append(
+            (int(x*image_width), int(y*image_height))
+        )
+    # TODO: ensure pipeline can handle 14 keypoints.
+    keypoints.pop(6)
+    keypoints.pop(12)
+    # breakpoint()
+    keypoint_labels.pop(6)
+    keypoint_labels.pop(12)
+
+    assert len(keypoints) == 12
+    assert len(keypoint_labels) == 12
+
+    return MetaData(
+        source={"file_path":file_path.as_posix()},
+        keypoints=keypoints,
+        keypoint_labels = keypoint_labels,
+        visible = [True]*len(keypoint_labels),
+        bounding_boxes={}
+        )
+
 def read_meta(file_path: Path):
     with open(file_path, mode="r") as fp:
         return MetaData(**json.load(fp))

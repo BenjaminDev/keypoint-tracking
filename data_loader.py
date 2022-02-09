@@ -1,4 +1,5 @@
 import os
+import shutil
 import warnings
 from pathlib import Path
 from random import randint, random
@@ -30,7 +31,7 @@ from torchvision import transforms, utils
 from torchvision.datasets import CIFAR10, MNIST
 from tqdm import tqdm
 
-from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta
+from utils import COLORS, Keypoints, MetaData, draw_keypoints, read_meta, read_points
 
 
 class HeatmapGenerator:
@@ -104,8 +105,21 @@ class KeypointsDataset(Dataset):
     ):
         super().__init__()
         self.data_path = Path(data_path)
-        self.image_files = sorted(list(self.data_path.glob("*.png")))
-        self.label_files = sorted(list(self.data_path.glob("*.json")))
+        self.image_files = sorted(list(self.data_path.glob("*.jpg")))
+        self.label_files = sorted(list(self.data_path.glob("*.txt")))
+        # HACK: files don't match up this should be added to a once off sanitize script.
+        img_files = [o.stem for o in self.image_files]
+        txt_files = [o.stem for o in self.label_files]
+        for  f in img_files:
+            if f not in txt_files:
+                self.image_files[img_files.index(f)].unlink()
+
+        for  f in txt_files:
+            if f not in img_files:
+                self.label_files[txt_files.index(f)].unlink()
+
+        if len(self.image_files) == 0:
+            raise Exception("data set is empty")
         self.sigma = sigma
         self.custom_transforms = True
         self.rotater = A.Compose(
@@ -165,7 +179,8 @@ class KeypointsDataset(Dataset):
         if self.train:
             image = cv2.imread(os.fsdecode(self.image_files[index]))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            metadata = read_meta(self.label_files[index])
+            height, width,_ = image.shape
+            metadata = read_points(self.label_files[index], image_width=width, image_height=height)
             keypoints = metadata.keypoints
             visible = torch.tensor(metadata.visible, dtype=torch.float)
             labels = metadata.keypoint_labels
@@ -320,7 +335,8 @@ class KeypointsDataModule(pl.LightningDataModule):
             self.keypoints_test = ConcatDataset(
                 [
                     KeypointsDataset(
-                        data_dir + "/test",
+                        # data_dir + "/test",
+                        data_dir,
                         image_size=self.input_size,
                         train=True,
                         transform=self.test_transforms,
@@ -356,13 +372,21 @@ class KeypointsDataModule(pl.LightningDataModule):
 
 if __name__ == "__main__":
     """This can be run as a script but that is just for debugging and testing"""
-    data_dirs = ["/mnt/vol_b/training_data/clean/0014-IMG_1037"]
+    val_data_dirs = [
+        "/mnt/vol_b/training_data/clean/0057-wearfits-training-data"
+    #     "/mnt/vol_b/training_data/clean/0015-IMG_1030",
+    # "/mnt/vol_b/training_data/clean/0019-IMG_1043",
+    # "/mnt/vol_b/training_data/clean/0028-IMG_1075",
+    # "/mnt/vol_b/training_data/clean/0036-IMG_4551_CHRIS",
+    # "/mnt/vol_b/training_data/clean/0054-VID20211011213441",
+    # "/mnt/vol_b/training_data/clean/0052-IMG_2673"
+    ]
     input_size = (160, 160)
     # ml = ModelLabeller(160,12)
-    dm = KeypointsDataModule(data_dirs, input_size, batch_size=1)
+    dm = KeypointsDataModule(train_data_dirs=["/mnt/vol_b/training_data/clean/0057-wearfits-training-data"],val_data_dirs=val_data_dirs, input_size=input_size, batch_size=1)
     # ds = KeypointsDataset(data_path=Path("/mnt/vol_b/clean_data/tmp2"))
     dm.setup("fit")
-    dl = dm.train_dataloader()
+    dl = dm.val_dataloader()
     for o, _ in dl:
         pass
 
