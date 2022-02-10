@@ -34,6 +34,10 @@ Host wf
  IdentityFile /{some path same as above}/wf_ras
 ```
 
+## gc-sharp-goldstine box config
+1. `conda activate open-mmlab`
+
+
 ## Training
 Check the `/experiments/config_1.yaml` for what data sets you using and what batch size.
 ```

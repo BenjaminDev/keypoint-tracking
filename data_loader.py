@@ -105,18 +105,19 @@ class KeypointsDataset(Dataset):
     ):
         super().__init__()
         self.data_path = Path(data_path)
+        # HACK: file extentions are hardcoded as .txt and .jpg
         self.image_files = sorted(list(self.data_path.glob("*.jpg")))
         self.label_files = sorted(list(self.data_path.glob("*.txt")))
         # HACK: files don't match up this should be added to a once off sanitize script.
-        img_files = [o.stem for o in self.image_files]
-        txt_files = [o.stem for o in self.label_files]
-        for  f in img_files:
-            if f not in txt_files:
-                self.image_files[img_files.index(f)].unlink()
+        # img_files = [o.stem for o in self.image_files]
+        # txt_files = [o.stem for o in self.label_files]
+        # for  f in img_files:
+        #     if f not in txt_files:
+        #         self.image_files[img_files.index(f)].unlink()
 
-        for  f in txt_files:
-            if f not in img_files:
-                self.label_files[txt_files.index(f)].unlink()
+        # for  f in txt_files:
+        #     if f not in img_files:
+        #         self.label_files[txt_files.index(f)].unlink()
 
         if len(self.image_files) == 0:
             raise Exception("data set is empty")
@@ -131,6 +132,7 @@ class KeypointsDataset(Dataset):
         assert image_size[0] == image_size[1], "Only square images are supported!"
         self.image_size = image_size
         self.heatmapper = HeatmapGenerator(image_size[0], 12)
+        # Sanity check files match
         if not any(
             [l.stem == i.stem for l, i in zip(self.label_files, self.image_files)]
         ):

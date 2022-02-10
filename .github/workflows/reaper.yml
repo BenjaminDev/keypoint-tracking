@@ -1,19 +1,19 @@
-name: Reaper
+# name: Reaper
 
-on:
-  schedule:
-    - cron:  '0 0 * * *'
-  workflow_dispatch:
-    inputs:
-        message:
-          description: 'why'
-          required: false
-jobs:
-  end_trainer:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    steps:
-      - name: Kill
-        run: |
-              idd=$(curl -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}"   https://api.genesiscloud.com/compute/v1/instances | jq -r '.instances[2].id')
-              curl -d '{"action": "stop"}' -X POST -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}" -H "Content-Type: application/json"  "https://api.genesiscloud.com/compute/v1/instances/$idd/actions"
+# on:
+#   schedule:
+#     - cron:  '0 0 * * *'
+#   workflow_dispatch:
+#     inputs:
+#         message:
+#           description: 'why'
+#           required: false
+# jobs:
+#   end_trainer:
+#     timeout-minutes: 10
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Kill
+#         run: |
+#               idd=$(curl -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}"   https://api.genesiscloud.com/compute/v1/instances | jq -r '.instances[2].id')
+#               curl -d '{"action": "stop"}' -X POST -H "X-Auth-Token: ${{ secrets.GENCLOUD_REAPER }}" -H "Content-Type: application/json"  "https://api.genesiscloud.com/compute/v1/instances/$idd/actions"

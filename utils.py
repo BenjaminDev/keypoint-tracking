@@ -190,13 +190,16 @@ def read_points(file_path:Path, image_width:int, image_height:int)->MetaData:
         "RIGHT_SHOE_INNER_SIDE",
         "RIGHT_SHOE_BACK",
         "RIGHT_SHOE_ANKLE",
+
         "RIGHT_SHOE_UNKOWN",
+
         "LEFT_SHOE_BACK",
         "LEFT_SHOE_ANKLE",
         "LEFT_SHOE_OUTER_SIDE",
         "LEFT_SHOE_TOP",
         "LEFT_SHOE_INNER_SIDE",
         "LEFT_SHOE_FRONT",
+        
         "LEFT_SHOE_UNKOWN"
     ]
     with open(file_path, mode="r") as fp:
@@ -212,7 +215,6 @@ def read_points(file_path:Path, image_width:int, image_height:int)->MetaData:
     # TODO: ensure pipeline can handle 14 keypoints.
     keypoints.pop(6)
     keypoints.pop(12)
-    # breakpoint()
     keypoint_labels.pop(6)
     keypoint_labels.pop(12)
 

@@ -25,7 +25,7 @@ from utils import Keypoints, draw_keypoints
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="""
-        Does 2 things:
+        Does 2 things: THIS IS OLD Use Trace to get the .pt file.
             1) Converts a model from pytorch_lightning checkpoint .ckpt to a pytorch traced model .pt (run on linux)
             2) Converts a model from pytorch traced .pt to a coreml model. (run on macos)
         """
@@ -99,7 +99,7 @@ if args.trace:
 
 existing_model = ct.utils.load_spec(
     os.fsdecode(args.model_dir_dst / f"heatmap_only.mlmodel")
-)  
+)
 heatmap_model = ct.models.MLModel(existing_model)
 image = PIL.Image.open(test_image_path).resize(input_size)
 outputs = heatmap_model.predict({"input": image})
